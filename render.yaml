@@ -26,7 +26,7 @@ services:
       - key: SIMULATOR_API_TOKEN
         sync: false
       - key: SIMULATOR_RATE_LIMIT_MAX
-        value: "60"
+        value: "20"
       - key: SIMULATOR_RATE_LIMIT_WINDOW_MS
         value: "60000"
       - key: TRUST_PROXY
