@@ -74,6 +74,25 @@ function testEnv() {
   });
 }
 
+function hostedDemoEnv(overrides: NodeJS.ProcessEnv = {}) {
+  return loadEnv({
+    NODE_ENV: "production",
+    HOST: "0.0.0.0",
+    LOG_LEVEL: "silent",
+    COMPANY_CONFIG_PATH: resolve("config/company.example.json"),
+    DEMO_HOSTED: "true",
+    ENABLE_SIMULATOR: "false",
+    ENABLE_DEBUG_ENDPOINTS: "false",
+    CORS_ALLOWED_ORIGINS: "https://movits.github.io",
+    SIMULATOR_API_TOKEN: "demo-token-with-at-least-32-characters",
+    WEBHOOK_PROCESSING_MODE: "sync",
+    OPENAI_API_KEY: "",
+    META_APP_SECRET: "",
+    WHATSAPP_SEND_ENABLED: "false",
+    ...overrides
+  });
+}
+
 function webhookPayload(messageId = "wamid-in-1", body = "Oi") {
   return {
     object: "whatsapp_business_account",
@@ -130,6 +149,7 @@ describe("HTTP server", () => {
     const simulated = await app.inject({
       method: "POST",
       url: "/api/simulate",
+      headers: { origin: "http://127.0.0.1:3000" },
       payload: { userId: "test", message: "Qual o horário de atendimento?" }
     });
 
@@ -144,6 +164,12 @@ describe("HTTP server", () => {
     expect(sessionState.json().state).toEqual({ status: "active", flow: "none" });
     expect(simulated.statusCode).toBe(200);
     expect(simulated.json().reply).toContain("segunda a sexta");
+    const configAsset = await app.inject({
+      method: "GET",
+      url: "/config.js"
+    });
+    expect(configAsset.statusCode).toBe(200);
+    expect(configAsset.headers["content-type"]).toContain("text/javascript");
   });
 
   it("não registra simulador/debug em produção e exige App Secret", async () => {
@@ -183,6 +209,95 @@ describe("HTTP server", () => {
       WHATSAPP_SEND_ENABLED: "false"
     });
     expect(() => buildServer({ env: unsafeAsync, llm: null })).toThrow("fila durável");
+  });
+
+  it("hospeda o simulador com CORS e token sem exigir credenciais Meta/OpenAI", async () => {
+    app = buildServer({ env: hostedDemoEnv(), llm: null });
+    const origin = "https://movits.github.io";
+    const authorization = "Bearer demo-token-with-at-least-32-characters";
+
+    const preflight = await app.inject({
+      method: "OPTIONS",
+      url: "/api/simulate",
+      headers: { origin }
+    });
+    const unauthorized = await app.inject({
+      method: "POST",
+      url: "/api/simulate/state",
+      headers: { origin },
+      payload: { userId: "hosted" }
+    });
+    const forbiddenOrigin = await app.inject({
+      method: "POST",
+      url: "/api/simulate/state",
+      headers: { origin: "https://evil.example", authorization },
+      payload: { userId: "hosted" }
+    });
+    const simulated = await app.inject({
+      method: "POST",
+      url: "/api/simulate",
+      headers: { origin, authorization },
+      payload: { userId: "hosted", message: "Qual o horario de atendimento?" }
+    });
+
+    expect(preflight.statusCode).toBe(204);
+    expect(preflight.headers["access-control-allow-origin"]).toBe(origin);
+    expect(unauthorized.statusCode).toBe(401);
+    expect(unauthorized.headers["www-authenticate"]).toContain("Bearer");
+    expect(forbiddenOrigin.statusCode).toBe(403);
+    expect(forbiddenOrigin.headers["access-control-allow-origin"]).toBeUndefined();
+    expect(simulated.statusCode).toBe(200);
+    expect(simulated.headers["access-control-allow-origin"]).toBe(origin);
+    expect(simulated.json().reply).toContain("segunda a sexta");
+    const health = await app.inject({ method: "GET", url: "/health", headers: { origin } });
+    expect(health.headers["access-control-allow-origin"]).toBe(origin);
+    expect(health.json()).toMatchObject({
+      status: "ok",
+      openai: "deterministic",
+      company: "Empresa Modelo"
+    });
+    expect((await app.inject({ method: "GET", url: "/" })).statusCode).toBe(404);
+    expect((await app.inject({ method: "GET", url: "/api/debug/state" })).statusCode).toBe(404);
+    expect((await app.inject({ method: "GET", url: "/webhooks/whatsapp" })).statusCode).toBe(404);
+    expect(
+      (await app.inject({ method: "POST", url: "/webhooks/whatsapp", payload: {} })).statusCode
+    ).toBe(404);
+  });
+
+  it("exige configuracao segura e limita requisicoes no demo hospedado", async () => {
+    expect(() =>
+      buildServer({
+        env: hostedDemoEnv({ SIMULATOR_API_TOKEN: "curto" }),
+        llm: null
+      })
+    ).toThrow("32 caracteres");
+    expect(() =>
+      buildServer({
+        env: hostedDemoEnv({ CORS_ALLOWED_ORIGINS: "" }),
+        llm: null
+      })
+    ).toThrow("CORS_ALLOWED_ORIGINS");
+
+    app = buildServer({
+      env: hostedDemoEnv({ SIMULATOR_RATE_LIMIT_MAX: "1" }),
+      llm: null
+    });
+    const request = {
+      method: "POST" as const,
+      url: "/api/simulate/state",
+      headers: {
+        origin: "https://movits.github.io",
+        authorization: "Bearer demo-token-with-at-least-32-characters"
+      },
+      payload: { userId: "rate-limited" }
+    };
+    const first = await app.inject(request);
+    const limited = await app.inject(request);
+
+    expect(first.statusCode).toBe(200);
+    expect(limited.statusCode).toBe(429);
+    expect(limited.headers["retry-after"]).toBeDefined();
+    expect(limited.json().error).toBe("rate_limit_exceeded");
   });
 
   it("recusa simulador exposto fora do loopback", () => {

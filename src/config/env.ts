@@ -13,14 +13,53 @@ const optionalSecret = z
   .optional()
   .transform((value) => value?.trim() || undefined);
 
+const allowedOrigins = z
+  .string()
+  .default("")
+  .transform((value, context) => {
+    const origins = value
+      .split(",")
+      .map((origin) => origin.trim().replace(/\/$/, ""))
+      .filter(Boolean);
+
+    for (const origin of origins) {
+      try {
+        if (new URL(origin).origin !== origin) {
+          context.addIssue({
+            code: "custom",
+            message: `CORS_ALLOWED_ORIGINS deve conter apenas origens, sem caminhos: ${origin}`
+          });
+        }
+      } catch {
+        context.addIssue({
+          code: "custom",
+          message: `Origem invalida em CORS_ALLOWED_ORIGINS: ${origin}`
+        });
+      }
+    }
+
+    return [...new Set(origins)];
+  });
+
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   HOST: z.string().default("127.0.0.1"),
   PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
   COMPANY_CONFIG_PATH: z.string().default("./config/company.example.json"),
+  DEMO_HOSTED: booleanValue("false"),
   ENABLE_SIMULATOR: booleanValue("false"),
   ENABLE_DEBUG_ENDPOINTS: booleanValue("false"),
+  CORS_ALLOWED_ORIGINS: allowedOrigins,
+  SIMULATOR_API_TOKEN: optionalSecret,
+  SIMULATOR_RATE_LIMIT_MAX: z.coerce.number().int().min(1).max(10_000).default(60),
+  SIMULATOR_RATE_LIMIT_WINDOW_MS: z.coerce
+    .number()
+    .int()
+    .min(1_000)
+    .max(3_600_000)
+    .default(60_000),
+  TRUST_PROXY: booleanValue("false"),
   WEBHOOK_PROCESSING_MODE: z.enum(["sync", "async"]).default("sync"),
   OPENAI_API_KEY: optionalSecret,
   OPENAI_MODEL: z.string().default("gpt-5.4-mini"),

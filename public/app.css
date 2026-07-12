@@ -36,6 +36,7 @@ body {
 }
 
 button,
+input,
 textarea {
   font: inherit;
 }
@@ -45,6 +46,7 @@ button {
 }
 
 button:focus-visible,
+input:focus-visible,
 textarea:focus-visible {
   outline: 3px solid rgba(37, 211, 102, 0.35);
   outline-offset: 2px;
@@ -354,7 +356,8 @@ textarea:focus-visible {
   box-shadow: 0 0 0 4px rgba(207, 68, 88, 0.12);
 }
 
-.reset-button {
+.reset-button,
+.settings-button {
   min-height: 38px;
   padding: 8px 12px;
   display: inline-flex;
@@ -369,12 +372,14 @@ textarea:focus-visible {
   font-weight: 750;
 }
 
-.reset-button:hover:not(:disabled) {
+.reset-button:hover:not(:disabled),
+.settings-button:hover:not(:disabled) {
   border-color: #9ebdb4;
   background: #f1f6f3;
 }
 
-.reset-button:disabled {
+.reset-button:disabled,
+.settings-button:disabled {
   cursor: wait;
   opacity: 0.55;
 }
@@ -621,6 +626,152 @@ textarea:focus-visible {
   font-weight: 650;
 }
 
+.backend-dialog {
+  width: min(92vw, 560px);
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #cdd8d3;
+  border-radius: 22px;
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 28px 90px rgba(10, 33, 28, 0.28);
+}
+
+.backend-dialog::backdrop {
+  background: rgba(6, 25, 21, 0.52);
+  backdrop-filter: blur(3px);
+}
+
+.backend-form {
+  padding: 24px;
+}
+
+.dialog-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.dialog-heading h2 {
+  margin: 5px 0 0;
+  font-size: 24px;
+  letter-spacing: -0.035em;
+}
+
+.dialog-close {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #f7f9f8;
+  color: #56635f;
+  cursor: pointer;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.dialog-close:hover {
+  background: #eef3f0;
+}
+
+.dialog-copy {
+  margin: 18px 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.backend-label {
+  display: block;
+  margin-bottom: 7px;
+  color: #33423e;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.backend-input {
+  width: 100%;
+  min-height: 46px;
+  padding: 11px 13px;
+  border: 1px solid #ccd8d3;
+  border-radius: 12px;
+  background: #fff;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.backend-input::placeholder {
+  color: #929e9a;
+}
+
+.backend-input[aria-invalid="true"] {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.token-label {
+  margin-top: 17px;
+}
+
+.backend-help,
+.backend-error {
+  margin: 8px 1px 0;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.backend-help {
+  color: #73807d;
+}
+
+.backend-error {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.dialog-actions {
+  margin-top: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.primary-button,
+.secondary-button {
+  min-height: 42px;
+  padding: 10px 14px;
+  border-radius: 11px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.primary-button {
+  border: 1px solid var(--green-800);
+  background: var(--green-800);
+  color: #fff;
+}
+
+.primary-button:hover {
+  background: var(--green-700);
+}
+
+.secondary-button {
+  border: 1px solid var(--line);
+  background: #f7f9f8;
+  color: #42514d;
+}
+
+.secondary-button:hover {
+  border-color: #a9bcb5;
+  background: #eef3f0;
+}
+
 @keyframes message-in {
   from {
     opacity: 0;
@@ -714,7 +865,12 @@ textarea:focus-visible {
     display: none;
   }
 
-  .reset-button {
+  .settings-button span:last-child {
+    display: none;
+  }
+
+  .reset-button,
+  .settings-button {
     width: 38px;
     justify-content: center;
     padding: 8px;
@@ -726,6 +882,19 @@ textarea:focus-visible {
 
   .message-bubble {
     max-width: 88%;
+  }
+
+  .backend-form {
+    padding: 20px;
+  }
+
+  .dialog-actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .dialog-actions button {
+    width: 100%;
   }
 }
 

@@ -5,11 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="Bancada local para testar o agente empresarial de WhatsApp."
+      content="Bancada online para testar o agente empresarial de WhatsApp."
     />
     <title>Lia — Simulador de WhatsApp</title>
-    <link rel="stylesheet" href="/app.css" />
-    <script src="/app.js" defer></script>
+    <link rel="stylesheet" href="./app.css" />
+    <script src="./config.js"></script>
+    <script src="./app.js" defer></script>
   </head>
   <body>
     <div class="page-shell">
@@ -25,11 +26,11 @@
         <section class="panel-card intro-card">
           <div class="section-heading">
             <span class="live-dot" aria-hidden="true"></span>
-            <span>Ambiente local</span>
+            <span id="environment-label">Ambiente de teste</span>
           </div>
-          <p>
-            Esta tela usa o mesmo fluxo que receberá mensagens do WhatsApp, sem enviar nada a
-            clientes reais. Use somente dados fictícios.
+          <p id="environment-description">
+            Esta tela usa o mesmo fluxo que receberá mensagens do WhatsApp, sem enviar nada a clientes
+            reais. Use somente dados fictícios.
           </p>
         </section>
 
@@ -100,6 +101,17 @@
                 <span>Conectando</span>
               </div>
               <button
+                class="settings-button"
+                id="backend-settings-button"
+                type="button"
+                title="Configurar endereço do backend"
+                aria-haspopup="dialog"
+                aria-controls="backend-dialog"
+              >
+                <span aria-hidden="true">⚙</span>
+                <span>Backend</span>
+              </button>
+              <button
                 class="reset-button"
                 id="reset-button"
                 type="button"
@@ -147,6 +159,65 @@
         </section>
       </main>
     </div>
+
+    <dialog class="backend-dialog" id="backend-dialog" aria-labelledby="backend-dialog-title">
+      <form class="backend-form" id="backend-form" method="dialog">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">CONEXÃO DO SIMULADOR</p>
+            <h2 id="backend-dialog-title">Configurar backend</h2>
+          </div>
+          <button class="dialog-close" id="backend-dialog-close" type="button" aria-label="Fechar">
+            ×
+          </button>
+        </div>
+
+        <p class="dialog-copy">
+          Informe o endereço público HTTPS da API. No campo de acesso, use somente o token temporário
+          do simulador — nunca chaves da Meta, OpenAI ou outras senhas.
+        </p>
+
+        <label class="backend-label" for="backend-url">URL pública da API</label>
+        <input
+          class="backend-input"
+          id="backend-url"
+          name="backendUrl"
+          type="url"
+          inputmode="url"
+          autocomplete="url"
+          spellcheck="false"
+          placeholder="https://seu-backend.exemplo.com"
+          aria-describedby="backend-help backend-error"
+        />
+        <p class="backend-help" id="backend-help">
+          Em localhost, deixe em branco para usar o próprio servidor. No GitHub Pages, é necessário
+          um backend HTTPS separado.
+        </p>
+
+        <label class="backend-label token-label" for="backend-token">Token de acesso ao simulador</label>
+        <input
+          class="backend-input"
+          id="backend-token"
+          name="backendToken"
+          type="password"
+          autocomplete="new-password"
+          spellcheck="false"
+          placeholder="Fornecido pelo administrador"
+          aria-describedby="backend-token-help backend-error"
+        />
+        <p class="backend-help" id="backend-token-help">
+          O token fica somente nesta aba e é apagado quando a sessão do navegador termina.
+        </p>
+        <p class="backend-error" id="backend-error" role="alert" hidden></p>
+
+        <div class="dialog-actions">
+          <button class="secondary-button" id="backend-default-button" type="button">
+            Usar configuração publicada
+          </button>
+          <button class="primary-button" type="submit">Salvar e conectar</button>
+        </div>
+      </form>
+    </dialog>
 
     <template id="message-template">
       <article class="message-row">

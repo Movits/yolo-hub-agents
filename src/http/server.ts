@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -23,28 +23,62 @@ const simulateSchema = z.object({
 
 const resetSchema = z.object({ userId: z.string().min(1).max(100).default("simulator-user") });
 
+function secretsMatch(provided: string | undefined, expected: string): boolean {
+  if (!provided) return false;
+  const providedBuffer = Buffer.from(provided);
+  const expectedBuffer = Buffer.from(expected);
+  return (
+    providedBuffer.length === expectedBuffer.length &&
+    timingSafeEqual(providedBuffer, expectedBuffer)
+  );
+}
+
 export function buildServer(options: RuntimeOptions = {}): FastifyInstance {
   const runtime = createRuntime(options);
   const { env, knowledge, store, agent, messenger } = runtime;
   const production = env.NODE_ENV === "production";
   const loopbackHost = ["127.0.0.1", "localhost", "::1"].includes(env.HOST);
-  if (!production && (env.ENABLE_SIMULATOR || env.ENABLE_DEBUG_ENDPOINTS) && !loopbackHost) {
-    throw new Error("Simulador e debug só podem ser habilitados em um HOST de loopback neste MVP.");
+  const localSimulatorEnabled = !production && env.ENABLE_SIMULATOR;
+  const simulatorEnabled = localSimulatorEnabled || env.DEMO_HOSTED;
+  if (
+    !loopbackHost &&
+    (env.ENABLE_DEBUG_ENDPOINTS || (env.ENABLE_SIMULATOR && !env.DEMO_HOSTED))
+  ) {
+    throw new Error("Simulador local e debug exigem um HOST de loopback.");
   }
-  if ((production || env.WHATSAPP_SEND_ENABLED || env.REQUIRE_WEBHOOK_SIGNATURE) && !env.META_APP_SECRET) {
-    throw new Error("Produção, envio habilitado ou REQUIRE_WEBHOOK_SIGNATURE=true exige META_APP_SECRET.");
+  if (env.DEMO_HOSTED) {
+    if (!production) {
+      throw new Error("DEMO_HOSTED=true exige NODE_ENV=production.");
+    }
+    if (env.ENABLE_DEBUG_ENDPOINTS) {
+      throw new Error("DEMO_HOSTED=true nao permite ENABLE_DEBUG_ENDPOINTS=true.");
+    }
+    if (!env.SIMULATOR_API_TOKEN || env.SIMULATOR_API_TOKEN.length < 32) {
+      throw new Error("DEMO_HOSTED=true exige SIMULATOR_API_TOKEN com pelo menos 32 caracteres.");
+    }
+    if (env.CORS_ALLOWED_ORIGINS.length === 0) {
+      throw new Error("DEMO_HOSTED=true exige ao menos uma origem em CORS_ALLOWED_ORIGINS.");
+    }
+  }
+  const productionWhatsApp = production && !env.DEMO_HOSTED;
+  if (
+    (productionWhatsApp || env.WHATSAPP_SEND_ENABLED || env.REQUIRE_WEBHOOK_SIGNATURE) &&
+    !env.META_APP_SECRET
+  ) {
+    throw new Error("WhatsApp em producao, envio ou assinatura obrigatoria exige META_APP_SECRET.");
   }
   if (
-    (production || env.WHATSAPP_SEND_ENABLED) &&
+    (productionWhatsApp || env.WHATSAPP_SEND_ENABLED) &&
     (!env.WHATSAPP_WABA_ID || !env.WHATSAPP_PHONE_NUMBER_ID)
   ) {
-    throw new Error("Produção ou envio habilitado exige WHATSAPP_WABA_ID e WHATSAPP_PHONE_NUMBER_ID.");
+    throw new Error("WhatsApp em producao ou envio exige WHATSAPP_WABA_ID e WHATSAPP_PHONE_NUMBER_ID.");
   }
   if (production && env.WEBHOOK_PROCESSING_MODE === "async") {
     throw new Error("WEBHOOK_PROCESSING_MODE=async exige uma fila durável e não é permitido neste MVP em produção.");
   }
 
   const app = Fastify({
+    trustProxy: env.TRUST_PROXY,
     logger:
       env.LOG_LEVEL === "silent"
         ? false
@@ -79,10 +113,83 @@ export function buildServer(options: RuntimeOptions = {}): FastifyInstance {
     }
   });
 
-  if (!production && env.ENABLE_SIMULATOR) {
+  const simulatorRateLimits = new Map<string, { count: number; resetAt: number }>();
+  let simulatorRateLimitChecks = 0;
+
+  app.addHook("onRequest", async (request, reply) => {
+    const path = request.url.split("?", 1)[0] ?? request.url;
+    const simulatorRequest = path === "/api/simulate" || path.startsWith("/api/simulate/");
+    const hostedHealthRequest = env.DEMO_HOSTED && path === "/health";
+    if ((!simulatorRequest || !simulatorEnabled) && !hostedHealthRequest) return;
+
+    reply.header("Cache-Control", "no-store").header("X-Content-Type-Options", "nosniff");
+
+    const origin = request.headers.origin;
+    const allowedCrossOrigin = origin && env.CORS_ALLOWED_ORIGINS.includes(origin);
+    if (origin && env.DEMO_HOSTED && !allowedCrossOrigin) {
+      return reply.code(403).send({ error: "origin_not_allowed" });
+    }
+    if (origin && allowedCrossOrigin) {
+      reply
+        .header("Access-Control-Allow-Origin", origin)
+        .header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        .header("Access-Control-Allow-Headers", "Authorization, Content-Type")
+        .header("Access-Control-Max-Age", "600")
+        .header("Vary", "Origin");
+    }
+    if (request.method === "OPTIONS") {
+      return reply.code(204).send();
+    }
+    if (hostedHealthRequest) return;
+
+    if (env.DEMO_HOSTED) {
+      const now = Date.now();
+      const existing = simulatorRateLimits.get(request.ip);
+      const bucket =
+        existing && existing.resetAt > now
+          ? existing
+          : { count: 0, resetAt: now + env.SIMULATOR_RATE_LIMIT_WINDOW_MS };
+
+      if (bucket.count >= env.SIMULATOR_RATE_LIMIT_MAX) {
+        const retryAfter = Math.max(1, Math.ceil((bucket.resetAt - now) / 1_000));
+        return reply
+          .header("Retry-After", String(retryAfter))
+          .header("X-RateLimit-Remaining", "0")
+          .code(429)
+          .send({ error: "rate_limit_exceeded", retryAfterSeconds: retryAfter });
+      }
+
+      bucket.count += 1;
+      simulatorRateLimits.set(request.ip, bucket);
+      reply
+        .header("X-RateLimit-Limit", String(env.SIMULATOR_RATE_LIMIT_MAX))
+        .header("X-RateLimit-Remaining", String(env.SIMULATOR_RATE_LIMIT_MAX - bucket.count));
+
+      simulatorRateLimitChecks += 1;
+      if (simulatorRateLimitChecks % 100 === 0) {
+        for (const [key, value] of simulatorRateLimits) {
+          if (value.resetAt <= now) simulatorRateLimits.delete(key);
+        }
+      }
+    }
+
+    if (env.SIMULATOR_API_TOKEN) {
+      const authorization = request.headers.authorization;
+      const match = authorization?.match(/^Bearer\s+(.+)$/i);
+      if (!secretsMatch(match?.[1]?.trim(), env.SIMULATOR_API_TOKEN)) {
+        return reply
+          .header("WWW-Authenticate", 'Bearer realm="simulator"')
+          .code(401)
+          .send({ error: "invalid_simulator_token" });
+      }
+    }
+  });
+
+  if (localSimulatorEnabled) {
     const publicDirectory = resolve("public");
     const uiHtml = readFileSync(resolve(publicDirectory, "index.html"), "utf8");
     const uiCss = readFileSync(resolve(publicDirectory, "app.css"), "utf8");
+    const uiConfig = readFileSync(resolve(publicDirectory, "config.js"), "utf8");
     const uiJavaScript = readFileSync(resolve(publicDirectory, "app.js"), "utf8");
     const contentSecurityPolicy =
       "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'";
@@ -97,6 +204,12 @@ export function buildServer(options: RuntimeOptions = {}): FastifyInstance {
     app.get("/app.css", async (_request, reply) =>
       reply.header("Cache-Control", "no-store").type("text/css; charset=utf-8").send(uiCss)
     );
+    app.get("/config.js", async (_request, reply) =>
+      reply
+        .header("Cache-Control", "no-store")
+        .type("text/javascript; charset=utf-8")
+        .send(uiConfig)
+    );
     app.get("/app.js", async (_request, reply) =>
       reply
         .header("Cache-Control", "no-store")
@@ -107,7 +220,7 @@ export function buildServer(options: RuntimeOptions = {}): FastifyInstance {
   }
 
   app.get("/health", async () =>
-    production
+    production && !env.DEMO_HOSTED
       ? { status: "ok" }
       : {
           status: "ok",
@@ -120,7 +233,7 @@ export function buildServer(options: RuntimeOptions = {}): FastifyInstance {
         }
   );
 
-  if (!production && env.ENABLE_SIMULATOR) {
+  if (simulatorEnabled) {
     app.post("/api/simulate", async (request, reply) => {
       const parsed = simulateSchema.safeParse(request.body);
       if (!parsed.success) {
@@ -167,7 +280,8 @@ export function buildServer(options: RuntimeOptions = {}): FastifyInstance {
     }));
   }
 
-  app.get("/webhooks/whatsapp", async (request, reply) => {
+  if (!env.DEMO_HOSTED) {
+    app.get("/webhooks/whatsapp", async (request, reply) => {
     const query = request.query as Record<string, unknown>;
     const mode = typeof query["hub.mode"] === "string" ? query["hub.mode"] : undefined;
     const token =
@@ -186,7 +300,7 @@ export function buildServer(options: RuntimeOptions = {}): FastifyInstance {
     return reply.code(403).send({ error: "webhook_verification_failed" });
   });
 
-  app.post("/webhooks/whatsapp", async (request, reply) => {
+    app.post("/webhooks/whatsapp", async (request, reply) => {
     const rawBody = request.rawBody ?? Buffer.alloc(0);
     const signatureHeader = request.headers["x-hub-signature-256"];
     const signature = Array.isArray(signatureHeader) ? signatureHeader[0] : signatureHeader;
@@ -285,7 +399,8 @@ export function buildServer(options: RuntimeOptions = {}): FastifyInstance {
     }
 
     return reply.code(200).send({ received: true });
-  });
+    });
+  }
 
   return app;
 }

@@ -15,7 +15,7 @@ MVP configurável de atendimento em português brasileiro. Ele funciona imediata
 - opt-out e reativação com confirmação;
 - fallback progressivo e pausa após três falhas;
 - proteção básica contra prompt injection, redação de segredos comuns e solicitações LGPD;
-- simulador no terminal e por HTTP;
+- simulador no terminal, por HTTP e em uma interface publicável no GitHub Pages;
 - webhook da Meta com challenge, assinatura HMAC do corpo bruto, lote, status e deduplicação;
 - fila por contato, cache de resposta e retry síncrono sem repetir o raciocínio do agente;
 - envio opcional pela Graph API;
@@ -117,7 +117,27 @@ Principais endpoints:
 | `GET` | `/webhooks/whatsapp` | challenge de configuração da Meta |
 | `POST` | `/webhooks/whatsapp` | mensagens e status do WhatsApp |
 
-Os endpoints `/api/simulate*` e `/api/debug/state` não são registrados quando `NODE_ENV=production`.
+Em produção normal, os endpoints `/api/simulate*` e `/api/debug/state` não são registrados. O modo
+isolado `DEMO_HOSTED=true` publica somente `/health` e `/api/simulate*`, exige token Bearer, restringe
+CORS e aplica rate limit; nesse modo a interface local, o debug e os webhooks do WhatsApp ficam
+desabilitados.
+
+## Demo online: GitHub Pages + Render
+
+O frontend estático fica no GitHub Pages e o backend Fastify fica em um Web Service do Render. O
+arquivo `render.yaml` descreve o serviço de demonstração; o workflow `.github/workflows/pages.yml`
+publica somente a pasta `public/`.
+
+1. Crie o serviço pelo Blueprint do Render e informe um `SIMULATOR_API_TOKEN` aleatório com pelo
+   menos 32 caracteres.
+2. Cadastre a URL final do Render na variável de repositório `BACKEND_URL`.
+3. Ative GitHub Pages com origem **GitHub Actions** e execute o workflow.
+4. Abra a página, informe o token temporário no diálogo **Backend** e use apenas dados fictícios.
+
+O token nunca é incluído no artefato do Pages: ele permanece somente em `sessionStorage` durante a
+aba atual. A demonstração online usa memória efêmera, não habilita o webhook da Meta e não é um
+ambiente de produção para clientes reais. No plano gratuito do Render, o primeiro acesso após um
+período ocioso pode levar cerca de um minuto enquanto o serviço é reativado.
 
 ## Personalizar a empresa
 
@@ -170,6 +190,7 @@ Consulte [docs/TESTING.md](docs/TESTING.md) para o roteiro funcional e [docs/PRO
 - o modo assíncrono usa apenas a memória do processo, não uma fila durável;
 - mídia não é transcrita ou analisada;
 - templates fora da janela de 24 horas não são enviados;
-- não há painel administrativo, autenticação do simulador nem métricas de produção.
+- não há painel administrativo nem métricas de produção; a demo hospedada usa apenas token Bearer e
+  rate limit básico, não autenticação individual de usuários.
 
 Esses limites estão explícitos nas mensagens do modo `prototype`, evitando que um teste pareça uma ação real.
