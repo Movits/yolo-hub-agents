@@ -118,6 +118,7 @@ export interface SupportProcedure {
 }
 
 export interface BusinessKnowledge {
+  agentId: string;
   prototype: boolean;
   notice: string;
   assistant: AssistantConfig;

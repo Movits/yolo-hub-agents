@@ -1,4 +1,5 @@
 {
+  "agentId": "empresa-modelo",
   "prototype": true,
   "notice": "DADOS TOTALMENTE FICTÍCIOS PARA TESTES. Substitua este arquivo antes de produção.",
   "assistant": {

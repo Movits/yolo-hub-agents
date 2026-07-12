@@ -49,6 +49,24 @@ src/
 └── infrastructure/    # armazenamento/outbox em memória do MVP
 ```
 
+## Brain e Obsidian
+
+A pasta `brain/` é um vault Markdown compatível com Obsidian. Ela separa conteúdo compartilhado,
+manifesto, conhecimento, fluxos e avaliações de cada agente. A primeira amostra é
+`brain/agents/empresa-modelo/`; `brain/agents/_template/` serve como ponto de partida para novos
+agentes.
+
+Abra `brain/` como vault no Obsidian e comece por `brain/HOME.md`. Antes de publicar alterações:
+
+```powershell
+pnpm brain:validate
+```
+
+O validador verifica frontmatter, IDs duplicados, estados editoriais, links Obsidian, manifests e
+padrões óbvios de segredos. Por enquanto a brain é uma camada editorial: o runtime continua usando
+`config/company.example.json`. A futura etapa de ingestão usará somente notas `approved`, com índice
+versionado e rollback.
+
 ## Início rápido
 
 Pré-requisito: Node.js 22 ou mais recente e pnpm.

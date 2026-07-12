@@ -1,0 +1,64 @@
+# Brain dos agentes
+
+Esta pasta é um vault Markdown compatível com Obsidian e a futura fonte de conhecimento dos agentes.
+Ela não é lida pelo runtime atual: primeiro o conteúdo passa por revisão, validação e publicação.
+
+## Regra de composição
+
+```text
+brain/shared
+  + brain/segments/<segmento> (futuro)
+  + brain/agents/<agent-id>
+  = conhecimento publicado do agente
+```
+
+O motor do WhatsApp continua compartilhado. Cada agente possui conhecimento, fluxos, avaliações e
+limites próprios. Políticas obrigatórias de segurança nunca podem ser substituídas por uma nota da
+empresa.
+
+Links do Obsidian servem para navegação editorial. A futura publicação selecionará arquivos apenas
+pelas raízes e pelo manifesto; ela nunca seguirá links como dependências de ingestão.
+
+## Abrir no Obsidian
+
+1. Abra o Obsidian e escolha **Open folder as vault**.
+2. Selecione a pasta `brain/`.
+3. Comece por [[HOME]].
+4. Copie `agents/_template/` ao criar um agente.
+5. Execute `pnpm brain:validate` antes de publicar qualquer alteração.
+
+Arquivos `.obsidian/` e `.trash/` são locais e não entram no Git.
+
+O `CODEOWNERS` registra responsabilidade e a CI valida cada push/PR. Como o plano atual do repositório
+privado não impõe branch protection, a segunda aprovação ainda é um procedimento manual. Antes de
+conteúdo real de clientes, habilite ruleset/PR obrigatório em plano compatível ou mova a brain para um
+repositório privado dedicado com essa proteção.
+
+## Ciclo editorial
+
+```text
+draft -> in-review -> approved -> retired
+```
+
+Somente notas `approved` cuja `sensitivity` esteja autorizada em `publishSensitivity` podem entrar no
+índice público do agente. Fluxos e avaliações internas continuam disponíveis para orquestração e
+testes, mas não para recuperação em respostas. Alterar conhecimento não altera o runtime
+automaticamente; a futura etapa de publicação gerará uma versão imutável e testada.
+
+Uma nota aprovada pode ter vigência futura para representar uma publicação agendada. O publicador
+deverá excluí-la até `effective_from` e excluir qualquer nota após `expires_at`. O `runtimeConfig` do
+manifesto é apenas uma ponte de migração para o protótipo atual: ele deve ficar em `config/`, declarar
+o mesmo `agentId` e passar pelo schema empresarial; não é uma instrução para ingerir arquivos.
+
+## Limites de conteúdo
+
+- Permitido: informações institucionais aprovadas, serviços, FAQs, políticas e procedimentos.
+- Proibido: chaves, senhas, tokens, conversas, leads, telefones reais de clientes, prontuários e
+  documentos pessoais.
+- Este workspace está sincronizado pelo OneDrive. Considere tudo que entra nele replicado em nuvem;
+  use apenas conteúdo fictício até existir uma política formal de acesso, retenção e backup.
+- Conteúdo de clínica deve limitar-se a informações institucionais e fluxos aprovados. Dados de saúde
+  nunca entram neste vault.
+- Toda nota precisa declarar responsável, sensibilidade, versão, vigência e origem.
+
+Veja também [[governance/publishing-policy|Política de publicação]].

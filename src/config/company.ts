@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { BusinessKnowledge } from "../domain/types.js";
 
 const companySchema = z.object({
+  agentId: z.string().regex(/^[a-z0-9][a-z0-9-]*$/),
   prototype: z.boolean(),
   notice: z.string().min(1),
   assistant: z.object({

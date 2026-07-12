@@ -12,7 +12,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "chat": "tsx src/cli.ts"
+    "chat": "tsx src/cli.ts",
+    "brain:validate": "node scripts/validate-brain.mjs"
   },
   "engines": {
     "node": ">=22"

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "1.0",
+  "id": "agent-id",
+  "displayName": "Nome do agente",
+  "status": "draft",
+  "extends": ["shared"],
+  "knowledgeRoots": ["knowledge"],
+  "workflowRoots": ["workflows"],
+  "evalRoots": ["evals"],
+  "publishOnlyApproved": true,
+  "publishSensitivity": ["public", "public-business"]
+}

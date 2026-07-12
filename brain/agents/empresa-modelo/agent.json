@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "1.0",
+  "id": "empresa-modelo",
+  "displayName": "Empresa Modelo",
+  "assistantName": "Lia",
+  "status": "prototype",
+  "extends": ["shared"],
+  "knowledgeRoots": ["knowledge"],
+  "workflowRoots": ["workflows"],
+  "evalRoots": ["evals"],
+  "runtimeConfig": "../../../config/company.example.json",
+  "publishOnlyApproved": true,
+  "publishSensitivity": ["public", "public-business"]
+}
