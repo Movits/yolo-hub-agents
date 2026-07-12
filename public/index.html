@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Bancada local para testar o agente empresarial de WhatsApp."
+    />
+    <title>Lia — Simulador de WhatsApp</title>
+    <link rel="stylesheet" href="/app.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <div class="page-shell">
+      <aside class="test-panel" aria-label="Painel de testes">
+        <div class="brand-row">
+          <div class="brand-mark" aria-hidden="true">Y</div>
+          <div>
+            <p class="eyebrow">YOLO HUB LABS</p>
+            <h1>Bancada do agente</h1>
+          </div>
+        </div>
+
+        <section class="panel-card intro-card">
+          <div class="section-heading">
+            <span class="live-dot" aria-hidden="true"></span>
+            <span>Ambiente local</span>
+          </div>
+          <p>
+            Esta tela usa o mesmo fluxo que receberá mensagens do WhatsApp, sem enviar nada a
+            clientes reais. Use somente dados fictícios.
+          </p>
+        </section>
+
+        <section class="guide-section" aria-labelledby="guide-title">
+          <p class="eyebrow" id="guide-title">ROTEIRO RÁPIDO</p>
+          <ol class="test-steps">
+            <li><span>1</span><p>Clique em <strong>Saudação</strong> para começar.</p></li>
+            <li><span>2</span><p>Teste preço, horário, lead, agenda ou suporte.</p></li>
+            <li><span>3</span><p>Use <strong>STOP</strong>, depois <strong>VOLTAR</strong> + <strong>SIM</strong>.</p></li>
+          </ol>
+        </section>
+
+        <section class="shortcuts-section" aria-labelledby="shortcuts-title">
+          <p class="eyebrow" id="shortcuts-title">ATALHOS DE TESTE</p>
+          <div class="shortcut-grid">
+            <button class="shortcut" type="button" data-message="Olá, tudo bem?">
+              <span aria-hidden="true">👋</span> Saudação
+            </button>
+            <button class="shortcut" type="button" data-message="Quais são os serviços e preços?">
+              <span aria-hidden="true">🏷️</span> Serviços
+            </button>
+            <button class="shortcut" type="button" data-message="Qual é o horário de atendimento?">
+              <span aria-hidden="true">🕘</span> Horário
+            </button>
+            <button class="shortcut" type="button" data-message="Quero contratar">
+              <span aria-hidden="true">🤝</span> Lead
+            </button>
+            <button class="shortcut" type="button" data-message="Quero agendar uma conversa">
+              <span aria-hidden="true">📅</span> Agenda
+            </button>
+            <button class="shortcut" type="button" data-message="O sistema não abre">
+              <span aria-hidden="true">🛠️</span> Suporte
+            </button>
+            <button class="shortcut" type="button" data-message="Quero falar com uma pessoa">
+              <span aria-hidden="true">🎧</span> Humano
+            </button>
+            <button class="shortcut shortcut-danger" type="button" data-message="STOP">
+              <span aria-hidden="true">⛔</span> Opt-out
+            </button>
+          </div>
+        </section>
+
+        <div class="local-note">
+          <span aria-hidden="true">🔒</span>
+          <p>
+            Use dados fictícios. Com a OpenAI conectada, o texto pode ser enviado ao provedor.
+            Sessões e protocolos ficam na memória local até reiniciar o servidor.
+          </p>
+        </div>
+      </aside>
+
+      <main class="chat-stage">
+        <section class="chat-window" aria-label="Simulador de conversa">
+          <header class="chat-header">
+            <div class="agent-identity">
+              <div class="agent-avatar" aria-hidden="true">L</div>
+              <div>
+                <div class="agent-name-row">
+                  <h2>Lia</h2>
+                  <span class="prototype-pill" id="mode-pill">PROTÓTIPO</span>
+                </div>
+                <p id="company-name">Assistente virtual</p>
+              </div>
+            </div>
+            <div class="header-actions">
+              <div class="connection-state" id="connection-state" role="status">
+                <span class="connection-dot" aria-hidden="true"></span>
+                <span>Conectando</span>
+              </div>
+              <button
+                class="reset-button"
+                id="reset-button"
+                type="button"
+                title="Iniciar novo teste sem apagar protocolos locais"
+              >
+                <span aria-hidden="true">↻</span>
+                <span>Novo teste</span>
+              </button>
+            </div>
+          </header>
+
+          <div class="chat-context-bar">
+            <span id="engine-label">Carregando motor…</span>
+            <span class="context-separator" aria-hidden="true"></span>
+            <span id="session-label">Sessão ativa</span>
+          </div>
+
+          <div
+            class="message-list"
+            id="message-list"
+            role="log"
+            aria-live="polite"
+            aria-relevant="additions"
+          ></div>
+
+          <div class="composer-wrap">
+            <form class="composer" id="message-form">
+              <label class="sr-only" for="message-input">Mensagem para a Lia</label>
+              <textarea
+                id="message-input"
+                name="message"
+                rows="1"
+                maxlength="4000"
+                placeholder="Digite uma mensagem…"
+                autocomplete="off"
+              ></textarea>
+              <button class="send-button" id="send-button" type="submit" aria-label="Enviar mensagem">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M3.4 20.1 21 12 3.4 3.9l.1 6.3L16 12 3.5 13.8l-.1 6.3Z" />
+                </svg>
+              </button>
+            </form>
+            <p class="composer-hint">Enter envia · Shift + Enter quebra a linha</p>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <template id="message-template">
+      <article class="message-row">
+        <div class="message-bubble">
+          <p class="message-text"></p>
+          <div class="message-meta">
+            <span class="message-detail"></span>
+            <time></time>
+          </div>
+        </div>
+      </article>
+    </template>
+
+    <div class="toast" id="toast" role="alert" hidden></div>
+  </body>
+</html>
