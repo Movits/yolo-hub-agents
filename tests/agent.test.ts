@@ -465,6 +465,42 @@ describe("BusinessAgent", () => {
     expect(agent.shouldSendOutbound("user-1", stopResult)).toBe(true);
   });
 
+  it("suprime uma resposta antiga enquanto uma urgência aguarda na fila do contato", async () => {
+    let releaseDecision:
+      | ((decision: Awaited<ReturnType<LlmResponder["decide"]>>) => void)
+      | undefined;
+    let called = false;
+    const deferredLlm: LlmResponder = {
+      decide: () => {
+        called = true;
+        return new Promise((resolve) => {
+          releaseDecision = resolve;
+        });
+      }
+    };
+    agent = new BusinessAgent(tenant, release, store, deferredLlm);
+
+    let shouldSendOldReply = true;
+    const oldReply = send("Uma pergunta antiga fora das regras").then((result) => {
+      shouldSendOldReply = agent.shouldSendOutbound("user-1", result);
+      return result;
+    });
+    await vi.waitFor(() => expect(called).toBe(true));
+    const urgentReply = send("É uma emergência");
+    releaseDecision?.({
+      intent: "faq",
+      reply: "Resposta antiga que ficou aguardando",
+      confidence: 0.9,
+      needsHuman: false,
+      reason: ""
+    });
+
+    const [, urgentResult] = await Promise.all([oldReply, urgentReply]);
+    expect(shouldSendOldReply).toBe(false);
+    expect(urgentResult.intent).toBe("support");
+    expect(urgentResult.state.flow).toBe("none");
+  });
+
   it("encaminha após três fallbacks consecutivos", async () => {
     await send("pergunta completamente fora da base um");
     await send("pergunta completamente fora da base dois");
