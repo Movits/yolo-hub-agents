@@ -25,7 +25,7 @@ WHATSAPP_PHONE_NUMBER_ID=
 WHATSAPP_ACCESS_TOKEN=
 WHATSAPP_VERIFY_TOKEN=gere-uma-string-longa-e-aleatoria
 META_APP_SECRET=
-WHATSAPP_SEND_ENABLED=true
+WHATSAPP_SEND_ENABLED=false
 REQUIRE_WEBHOOK_SIGNATURE=true
 ```
 
@@ -74,6 +74,10 @@ Referência: [coleção oficial Webhook Subscriptions](https://www.postman.com/m
 - A resposta do endpoint de envio significa “aceita”, não “entregue”. Entrega real chega por status.
 - A Meta pode repetir webhooks por até sete dias quando não recebe HTTP 200.
 - No modo síncrono, falha de envio devolve HTTP 503; o retry reaproveita a resposta em cache e a fila local impede dois envios concorrentes do mesmo `wamid`.
+
+Neste hardening, `WHATSAPP_SEND_ENABLED=true` é recusado em `NODE_ENV=production`. Isso evita envio
+duplicado na janela em que a Graph API aceita a mensagem, mas o processo cai antes de gravar a
+confirmação local. Só remova esse bloqueio junto com uma outbox durável e reconciliação testada.
 
 Referências: [messages webhook](https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/messages), [status](https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/reference/messages/status) e [visão geral de webhooks](https://developers.facebook.com/documentation/business-messaging/whatsapp/webhooks/overview).
 

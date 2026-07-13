@@ -37,6 +37,11 @@ operacional para um repositório privado dedicado, com PR obrigatório, segunda 
 acesso. O validador rejeita notas `confidential` e `restricted` neste scaffold. O `CODEOWNERS`
 registra responsabilidade e a CI valida cada push/PR.
 
+`pnpm public-data:check` reforça que este scaffold continue fictício, rejeitando identificadores
+pessoais comuns e releases públicas com `prototype=false`. `brain-private/` é bloqueada no Git apenas
+como última defesa; a brain real deve viver em outro repositório/vault privado, não numa subpasta
+ignorada deste projeto.
+
 ## Ciclo editorial
 
 ```text

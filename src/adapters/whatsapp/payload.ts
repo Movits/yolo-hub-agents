@@ -91,6 +91,8 @@ export interface WhatsAppStatusUpdate {
   status: string;
   timestamp: Date;
   recipientId?: string;
+  wabaId?: string;
+  phoneNumberId?: string;
   errors: unknown[];
 }
 
@@ -99,8 +101,12 @@ export function extractWhatsAppStatuses(payload: unknown): WhatsAppStatusUpdate[
   const results: WhatsAppStatusUpdate[] = [];
 
   for (const entry of asObjects(payload.entry)) {
+    const wabaId = asString(entry.id);
     for (const change of asObjects(entry.changes)) {
       if (change.field !== "messages" || !isObject(change.value)) continue;
+      const phoneNumberId = isObject(change.value.metadata)
+        ? asString(change.value.metadata.phone_number_id)
+        : undefined;
       for (const status of asObjects(change.value.statuses)) {
         const messageId = asString(status.id);
         const state = asString(status.status);
@@ -111,6 +117,8 @@ export function extractWhatsAppStatuses(payload: unknown): WhatsAppStatusUpdate[
           status: state,
           timestamp: parseTimestamp(status.timestamp),
           ...(recipientId ? { recipientId } : {}),
+          ...(wabaId ? { wabaId } : {}),
+          ...(phoneNumberId ? { phoneNumberId } : {}),
           errors: Array.isArray(status.errors) ? status.errors : []
         });
       }

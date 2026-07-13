@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
-import { lstatSync, readFileSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { releaseManifestSchema, type ReleaseManifest } from "../brain/release-contract.js";
+import {
+  verifyReleaseSignature,
+  type TrustedReleaseKeys
+} from "../brain/release-signature.js";
 import type { BusinessKnowledge } from "../domain/types.js";
 import { parseBusinessKnowledge } from "./company.js";
 
@@ -15,6 +19,8 @@ export interface ReleaseIdentity {
   agentId: string;
   version: string;
   manifestSha256: string;
+  signatureVerified: boolean;
+  signatureKeyId?: string;
 }
 
 export interface KnowledgeRelease {
@@ -29,6 +35,8 @@ export interface LoadPinnedReleaseOptions {
   agentId: string;
   version: string;
   expectedManifestSha256: string;
+  requireSignature?: boolean;
+  trustedPublicKeys?: TrustedReleaseKeys;
 }
 
 function sha256(value: Uint8Array): string {
@@ -90,7 +98,8 @@ export function createDevelopmentRelease(knowledge: BusinessKnowledge): Knowledg
     identity: {
       agentId: knowledge.agentId,
       version: "dev-fallback",
-      manifestSha256: "unverified-dev-fallback"
+      manifestSha256: "unverified-dev-fallback",
+      signatureVerified: false
     },
     knowledge,
     source: "dev-fallback"
@@ -119,6 +128,7 @@ export function loadPinnedKnowledgeRelease(
   const manifestPath = resolve(releaseDirectory, "manifest.json");
   const checksumPath = resolve(releaseDirectory, "manifest.sha256");
   const knowledgePath = resolve(releaseDirectory, "business-knowledge.json");
+  const signaturePath = resolve(releaseDirectory, "manifest.sig.json");
   assertRegularFile(manifestPath, maximumManifestBytes);
   assertRegularFile(checksumPath, 256);
   assertRegularFile(knowledgePath, maximumKnowledgeBytes);
@@ -141,6 +151,19 @@ export function loadPinnedKnowledgeRelease(
     throw new Error("publicationId do manifesto é inválido.");
   }
 
+  let signatureKeyId: string | undefined;
+  if (existsSync(signaturePath)) {
+    assertRegularFile(signaturePath, 16 * 1024);
+    const verified = verifyReleaseSignature(
+      manifestBytes,
+      parseJson(readFileSync(signaturePath), "manifest.sig.json"),
+      options.trustedPublicKeys ?? {}
+    );
+    signatureKeyId = verified.keyId;
+  } else if (options.requireSignature) {
+    throw new Error("Release selecionada não possui assinatura Ed25519 obrigatória.");
+  }
+
   const knowledgeBytes = readFileSync(knowledgePath);
   if (sha256(knowledgeBytes) !== manifest.output.sha256) {
     throw new Error("Checksum de business-knowledge.json não corresponde ao manifesto.");
@@ -156,7 +179,9 @@ export function loadPinnedKnowledgeRelease(
     identity: {
       agentId: options.agentId,
       version: options.version,
-      manifestSha256: actualManifestSha256
+      manifestSha256: actualManifestSha256,
+      signatureVerified: signatureKeyId !== undefined,
+      ...(signatureKeyId ? { signatureKeyId } : {})
     },
     knowledge,
     source: "published",

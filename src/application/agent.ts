@@ -128,6 +128,13 @@ function isFlowCancelRequest(text: string): boolean {
   );
 }
 
+export class MessageAlreadyProcessingError extends Error {
+  constructor() {
+    super("Mensagem já está em processamento; solicite retry.");
+    this.name = "MessageAlreadyProcessingError";
+  }
+}
+
 export class BusinessAgent {
   private readonly userQueues = new Map<string, Promise<AgentResult>>();
   private readonly pendingPauseRequests = new Map<string, number>();
@@ -167,7 +174,9 @@ export class BusinessAgent {
       .catch(() => undefined)
       .then(() => this.processSequential(message))
       .catch((error: unknown) => {
-        this.store.releaseMessage(this.tenant, message.id);
+        if (!(error instanceof MessageAlreadyProcessingError)) {
+          this.store.releaseMessage(this.tenant, message.id);
+        }
         throw error;
       });
     this.userQueues.set(userKey, current);
@@ -205,14 +214,7 @@ export class BusinessAgent {
           state: { status: current.status, flow: current.flow }
         };
       }
-      return this.result(current, {
-        reply: null,
-        intent: "unknown",
-        source: "system",
-        suppressed: true,
-        duplicate: true,
-        recordHistory: false
-      });
+      throw new MessageAlreadyProcessingError();
     }
 
     let session = this.store.getSession(this.tenant, message.userId);
@@ -455,7 +457,7 @@ export class BusinessAgent {
 
       case "lead_confirm":
         if (isPositive(value)) {
-          const lead = this.store.createLead(this.tenant, {
+          const lead = this.store.createLead(this.tenant, message.id, {
             userId: session.userId,
             name: session.flowData.name ?? "",
             company: session.flowData.company ?? "",
@@ -535,7 +537,7 @@ export class BusinessAgent {
 
       case "schedule_confirm":
         if (isPositive(value)) {
-          const appointment = this.store.createAppointment(this.tenant, {
+          const appointment = this.store.createAppointment(this.tenant, message.id, {
             userId: session.userId,
             service: session.flowData.service ?? "",
             preferredDateTime: session.flowData.preferredDateTime ?? "",
@@ -809,7 +811,7 @@ export class BusinessAgent {
     ]
       .join(" | ")
       .slice(0, 1_500);
-    const ticket = this.store.createTicket(this.tenant, {
+    const ticket = this.store.createTicket(this.tenant, message.id, {
       userId: session.userId,
       category,
       summary,
@@ -942,9 +944,8 @@ export class BusinessAgent {
       }
       session.history = session.history.slice(-20);
     }
-    this.store.saveSession(this.tenant, session);
     const result = this.result(session, input);
-    this.store.saveProcessedResult(this.tenant, message.id, result);
+    this.store.commitResult(this.tenant, message.id, session, result);
     return result;
   }
 

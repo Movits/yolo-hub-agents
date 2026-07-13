@@ -3,12 +3,14 @@ services:
     name: yolo-hub-agents-api
     runtime: node
     plan: free
-    buildCommand: corepack pnpm install --frozen-lockfile && corepack pnpm build
+    buildCommand: corepack pnpm install --frozen-lockfile && corepack pnpm verify:deploy
     startCommand: node dist/index.js
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
+      - key: NODE_VERSION
+        value: 24.15.0
       - key: HOST
         value: 0.0.0.0
       - key: LOG_LEVEL
@@ -18,11 +20,13 @@ services:
       - key: AGENT_RELEASE_VERSION
         value: "1.0.0"
       - key: AGENT_RELEASE_MANIFEST_SHA256
-        value: 88ac89ba12849303d140fc9a667de1d5d7a21d511253d3a345d953ddc275abd0
+        sync: false
       - key: AGENT_RELEASES_ROOT
         value: ./config/releases
       - key: DEMO_HOSTED
         value: "true"
+      - key: STORAGE_DRIVER
+        value: memory
       - key: ENABLE_SIMULATOR
         value: "false"
       - key: ENABLE_DEBUG_ENDPOINTS

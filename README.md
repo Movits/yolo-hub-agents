@@ -19,7 +19,10 @@ MVP configurável de atendimento em português brasileiro. Ele funciona imediata
 - simulador no terminal, por HTTP e em uma interface publicável no GitHub Pages;
 - webhook da Meta com challenge, assinatura HMAC do corpo bruto, lote, status e deduplicação;
 - fila por contato, cache de resposta e retry síncrono sem repetir o raciocínio do agente;
-- envio opcional pela Graph API;
+- adaptador da Graph API disponível para testes, com envio de produção bloqueado até existir outbox;
+- SQLite durável com retomada de claims e commits atômicos;
+- registro e autorização por tenant, com binding exato WABA + número;
+- verificação opcional Ed25519 e bloqueio obrigatório no WhatsApp de produção;
 - testes unitários e de integração.
 
 ## Arquitetura
@@ -33,7 +36,7 @@ flowchart LR
     AG --> RULES["Regras e fluxos"]
     AG --> KB["Release fixada de conhecimento"]
     AG -. opcional .-> AI["OpenAI Responses API"]
-    AG --> MEM["Sessões e registros em memória"]
+    AG --> MEM["Memória da demo ou SQLite durável"]
     AG --> OUT["Adaptador de saída"]
     OUT -. quando habilitado .-> WA
 ```
@@ -47,7 +50,8 @@ src/
 ├── config/            # validação de ambiente e base empresarial
 ├── domain/            # tipos e contratos de dados
 ├── http/              # rotas, raw body, HMAC e coordenação de envio
-└── infrastructure/    # armazenamento/outbox em memória do MVP
+├── infrastructure/    # memória e SQLite tenant-aware
+└── tenancy/           # registro, autorização e bindings por tenant
 ```
 
 ## Brain e Obsidian
@@ -100,6 +104,8 @@ Antes de cada push, execute:
 
 ```powershell
 pnpm secrets:check
+pnpm public-data:check
+pnpm verify:deploy
 ```
 
 O comando verifica arquivos rastreados e o histórico Git por formatos conhecidos de credenciais. Ele
@@ -108,7 +114,7 @@ arquivo seja removido depois. Veja também [SECURITY.md](SECURITY.md).
 
 ## Início rápido
 
-Pré-requisito: Node.js 22 ou mais recente e pnpm.
+Pré-requisito: Node.js 24.14 ou mais recente, dentro da linha 24, e pnpm.
 
 ### Windows: abrir a interface com dois cliques
 
@@ -182,6 +188,24 @@ isolado `DEMO_HOSTED=true` publica somente `/health` e `/api/simulate*`, exige t
 CORS e aplica rate limit; nesse modo a interface local, o debug e os webhooks do WhatsApp ficam
 desabilitados.
 
+## Persistência e registro de tenants
+
+A demo continua em memória. Para persistência local ou em um servidor com disco persistente:
+
+```env
+STORAGE_DRIVER=sqlite
+SQLITE_PATH=./data/yolo-hub.sqlite
+```
+
+O SQLite usa WAL, `synchronous=FULL`, claims com lease, deduplicação com TTL e commit atômico de
+sessão + resultado. Leads, agendas e tickets usam IDs determinísticos por mensagem para que uma
+retomada não crie protocolos duplicados. WhatsApp de produção falha fechado se o store for efêmero.
+
+O registro opcional [tenants.example.json](config/tenants.example.json) fixa tenant, agente, release,
+principal do simulador e binding WABA + número sem armazenar tokens. Os tokens ficam em
+`SIMULATOR_TENANT_TOKENS`, e as rotas `/api/tenants/:tenantId/*` recusam um token de outro tenant.
+Webhooks são roteados somente pelo binding exato após a assinatura HMAC ser validada.
+
 ## Demo online: GitHub Pages + Render
 
 O frontend estático fica no GitHub Pages e o backend Fastify fica em um Web Service do Render. Este
@@ -192,8 +216,8 @@ pertence a esse repositório de deploy, não ao `main` deste projeto.
 
 1. Crie o serviço pelo Blueprint do Render e informe um `SIMULATOR_API_TOKEN` aleatório com pelo
    menos 32 caracteres.
-2. O Blueprint fixa `empresa-modelo@1.0.0`, o diretório `./config/releases` e o SHA-256 esperado do
-   manifesto; o backend recusa iniciar se qualquer byte divergir.
+2. Cadastre `AGENT_RELEASE_MANIFEST_SHA256` como variável protegida no Render. O valor não fica mais
+   ancorado no mesmo arquivo que a release; o backend recusa iniciar se qualquer byte divergir.
 3. No repositório de deploy, cadastre a URL final do Render na variável `BACKEND_URL`.
 4. Execute o workflow do GitHub Pages no repositório de deploy.
 5. Abra a página, informe o token temporário no diálogo **Backend** e use apenas dados fictícios.
@@ -238,7 +262,8 @@ O passo a passo detalhado está em [docs/META_SETUP.md](docs/META_SETUP.md). Em 
 3. Exponha este servidor em HTTPS público.
 4. Cadastre `https://SEU_DOMINIO/webhooks/whatsapp` como callback.
 5. Preencha as variáveis `META_*` e `WHATSAPP_*`.
-6. Ative `WHATSAPP_SEND_ENABLED=true` e `REQUIRE_WEBHOOK_SIGNATURE=true`.
+6. Mantenha `WHATSAPP_SEND_ENABLED=false` nesta fase e use mensageiro falso nos testes. Produção só
+   poderá enviar depois da implementação de outbox durável e reconciliação de resultado ambíguo.
 
 ## Verificação
 
@@ -246,19 +271,19 @@ O passo a passo detalhado está em [docs/META_SETUP.md](docs/META_SETUP.md). Em 
 pnpm typecheck
 pnpm test
 pnpm build
-pnpm brain:publish --agent empresa-modelo --as-of 2026-07-12 --check
+pnpm verify:deploy
 ```
 
 Consulte [docs/TESTING.md](docs/TESTING.md) para o roteiro funcional e [docs/PRODUCTION.md](docs/PRODUCTION.md) antes de usar com clientes reais.
 
 ## Limites deliberados deste MVP
 
-- sessões e registros somem ao reiniciar;
+- a demo gratuita continua efêmera; SQLite só é durável quando o host oferece disco persistente;
 - não há CRM, calendário, help desk ou atendente conectados;
 - o modo assíncrono usa apenas a memória do processo, não uma fila durável;
 - mídia não é transcrita ou analisada;
 - templates fora da janela de 24 horas não são enviados;
-- não há painel administrativo nem métricas de produção; a demo hospedada usa apenas token Bearer e
-  rate limit básico, não autenticação individual de usuários.
+- não há painel administrativo nem métricas de produção; a demo hospedada usa um token Bearer único,
+  enquanto o modo multi-tenant usa tokens vinculados a cada tenant.
 
 Esses limites estão explícitos nas mensagens do modo `prototype`, evitando que um teste pareça uma ação real.

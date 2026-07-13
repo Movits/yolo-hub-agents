@@ -22,10 +22,8 @@ export class MetaWhatsAppClient implements OutboundMessenger {
     this.defaultPhoneNumberId = options.defaultPhoneNumberId;
     this.timeoutMs = options.timeoutMs ?? 10_000;
 
-    if (this.enabled && (!this.accessToken || !this.defaultPhoneNumberId)) {
-      throw new Error(
-        "WHATSAPP_SEND_ENABLED=true exige WHATSAPP_ACCESS_TOKEN e WHATSAPP_PHONE_NUMBER_ID."
-      );
+    if (this.enabled && !this.accessToken) {
+      throw new Error("WHATSAPP_SEND_ENABLED=true exige WHATSAPP_ACCESS_TOKEN.");
     }
   }
 

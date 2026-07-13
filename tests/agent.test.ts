@@ -217,6 +217,21 @@ describe("BusinessAgent", () => {
     expect(duplicate.reply).toBe(first.reply);
   });
 
+  it("solicita retry quando outra instância ainda processa a mensagem", async () => {
+    const message: IncomingMessage = {
+      id: "claimed-elsewhere",
+      userId: "user-claimed",
+      text: "Oi",
+      timestamp: new Date(),
+      source: "whatsapp",
+      messageType: "text"
+    };
+    expect(store.markMessageProcessed(tenant, message.id)).toBe(true);
+
+    await expect(agent.process(message)).rejects.toThrow("solicite retry");
+    expect(store.markMessageProcessed(tenant, message.id)).toBe(false);
+  });
+
   it("isola sessão, opt-out, reset e deduplicação entre tenants", async () => {
     const sharedStore = new MemoryStore();
     const tenantA: TenantContext = { tenantId: "tenant-a", agentId: knowledge.agentId };

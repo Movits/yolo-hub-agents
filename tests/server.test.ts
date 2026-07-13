@@ -1,11 +1,14 @@
 import { createHmac } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import type { OutboundMessenger } from "../src/application/ports.js";
 import { loadEnv } from "../src/config/env.js";
+import { DEFAULT_TENANT_CONTEXT } from "../src/domain/tenant.js";
 import { buildServer } from "../src/http/server.js";
+import { MemoryStore } from "../src/infrastructure/memory-store.js";
 
 function releaseSelection(): NodeJS.ProcessEnv {
   return {
@@ -143,11 +146,46 @@ function signature(raw: string): string {
 
 describe("HTTP server", () => {
   let app: FastifyInstance | undefined;
+  const temporaryDirectories: string[] = [];
 
   afterEach(async () => {
     await app?.close();
     app = undefined;
+    for (const directory of temporaryDirectories.splice(0)) {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
+
+  function tenantRegistryFixture(): string {
+    const directory = mkdtempSync(resolve(tmpdir(), "http-tenant-registry-"));
+    temporaryDirectories.push(directory);
+    const path = resolve(directory, "tenants.json");
+    const manifestSha256 = releaseSelection().AGENT_RELEASE_MANIFEST_SHA256!;
+    const tenant = (tenantId: string, keyId: string, wabaId: string, phoneNumberId: string) => ({
+      active: true,
+      tenantId,
+      agentId: "empresa-modelo",
+      release: { version: "1.0.0", manifestSha256 },
+      simulator: { keyId },
+      whatsapp: { enabled: true, wabaId, phoneNumberId }
+    });
+    writeFileSync(
+      path,
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          tenants: [
+            tenant("tenant-a", "tenant-a-key", "waba-a", "phone-a"),
+            tenant("tenant-b", "tenant-b-key", "waba-b", "phone-b")
+          ]
+        },
+        null,
+        2
+      )}\n`,
+      "utf8"
+    );
+    return path;
+  }
 
   it("expõe health e simulador sem credenciais externas", async () => {
     app = buildServer({ env: testEnv(), llm: null });
@@ -190,6 +228,80 @@ describe("HTTP server", () => {
     expect(configAsset.headers["content-type"]).toContain("text/javascript");
   });
 
+  it("autoriza simulador por tenant sem confiar no tenantId do corpo", async () => {
+    const registryPath = tenantRegistryFixture();
+    const tokenA = "tenant-a-token-with-at-least-32-characters";
+    const tokenB = "tenant-b-token-with-at-least-32-characters";
+    const env = loadEnv({
+      NODE_ENV: "test",
+      LOG_LEVEL: "silent",
+      HOST: "127.0.0.1",
+      ENABLE_SIMULATOR: "true",
+      TENANT_REGISTRY_PATH: registryPath,
+      DEFAULT_TENANT_ID: "tenant-a",
+      SIMULATOR_TENANT_TOKENS: JSON.stringify({
+        "tenant-a-key": tokenA,
+        "tenant-b-key": tokenB
+      }),
+      AGENT_RELEASES_ROOT: resolve("config/releases"),
+      OPENAI_API_KEY: "",
+      META_APP_SECRET: "app-secret",
+      REQUIRE_WEBHOOK_SIGNATURE: "true",
+      WHATSAPP_SEND_ENABLED: "false"
+    });
+    app = buildServer({ env, llm: null });
+
+    const tenantA = await app.inject({
+      method: "POST",
+      url: "/api/tenants/tenant-a/simulate",
+      headers: { authorization: `Bearer ${tokenA}` },
+      payload: { userId: "same-user", messageId: "same-message", message: "STOP" }
+    });
+    const tenantB = await app.inject({
+      method: "POST",
+      url: "/api/tenants/tenant-b/simulate",
+      headers: { authorization: `Bearer ${tokenB}` },
+      payload: { userId: "same-user", messageId: "same-message", message: "Oi" }
+    });
+    const crossedToken = await app.inject({
+      method: "POST",
+      url: "/api/tenants/tenant-b/state",
+      headers: { authorization: `Bearer ${tokenA}` },
+      payload: { userId: "same-user" }
+    });
+    const inbound = webhookPayload("tenant-binding-message", "STOP");
+    inbound.entry[0]!.id = "waba-b";
+    inbound.entry[0]!.changes[0]!.value.metadata.phone_number_id = "phone-b";
+    const rawInbound = JSON.stringify(inbound);
+    const webhook = await app.inject({
+      method: "POST",
+      url: "/webhooks/whatsapp",
+      headers: {
+        "content-type": "application/json",
+        "x-hub-signature-256": signature(rawInbound)
+      },
+      payload: rawInbound
+    });
+    const tenantBState = await app.inject({
+      method: "POST",
+      url: "/api/tenants/tenant-b/state",
+      headers: { authorization: `Bearer ${tokenB}` },
+      payload: { userId: "5511999" }
+    });
+
+    expect(tenantA.statusCode).toBe(200);
+    expect(tenantA.json()).toMatchObject({ tenantId: "tenant-a", intent: "opt_out" });
+    expect(tenantB.statusCode).toBe(200);
+    expect(tenantB.json()).toMatchObject({
+      tenantId: "tenant-b",
+      duplicate: false,
+      suppressed: false
+    });
+    expect(crossedToken.statusCode).toBe(401);
+    expect(webhook.statusCode).toBe(200);
+    expect(tenantBState.json().state.status).toBe("opted_out");
+  });
+
   it("não registra simulador/debug em produção e exige App Secret", async () => {
     const insecureProduction = loadEnv({
       NODE_ENV: "production",
@@ -214,6 +326,21 @@ describe("HTTP server", () => {
     expect(() => buildServer({ env: production, llm: null })).toThrow(
       "release marcada como prototype"
     );
+
+    const blockedOutbound = loadEnv({
+      NODE_ENV: "production",
+      LOG_LEVEL: "silent",
+      ...releaseSelection(),
+      META_APP_SECRET: "production-secret",
+      WHATSAPP_WABA_ID: "waba-production",
+      WHATSAPP_PHONE_NUMBER_ID: "phone-production",
+      WHATSAPP_ACCESS_TOKEN: "test-access",
+      WHATSAPP_SEND_ENABLED: "true"
+    });
+    expect(() => buildServer({ env: blockedOutbound, llm: null })).toThrow("outbox durável");
+    expect(() =>
+      buildServer({ env: production, llm: null, messenger: new MockMessenger() })
+    ).toThrow("outbox durável");
 
     const unsafeAsync = loadEnv({
       NODE_ENV: "production",
@@ -409,6 +536,26 @@ describe("HTTP server", () => {
     expect(messenger.sent).toHaveLength(1);
     expect(messenger.sent[0]).toMatchObject({ to: "5511999", phoneNumberId: "phone-1" });
     expect(messenger.sent[0]?.text).toContain("assistente virtual");
+  });
+
+  it("retorna 503 enquanto outra instância mantém o claim da mensagem", async () => {
+    const store = new MemoryStore();
+    store.markMessageProcessed(DEFAULT_TENANT_CONTEXT, "wamid-processing");
+    app = buildServer({ env: testEnv(), llm: null, store });
+    const raw = JSON.stringify(webhookPayload("wamid-processing"));
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/webhooks/whatsapp",
+      headers: {
+        "content-type": "application/json",
+        "x-hub-signature-256": signature(raw)
+      },
+      payload: raw
+    });
+
+    expect(response.statusCode).toBe(503);
+    expect(store.markMessageProcessed(DEFAULT_TENANT_CONTEXT, "wamid-processing")).toBe(false);
   });
 
   it("retorna 503 em falha de envio e reaproveita a resposta no retry", async () => {

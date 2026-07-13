@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "tenants": [
+    {
+      "active": true,
+      "tenantId": "empresa-modelo",
+      "agentId": "empresa-modelo",
+      "release": {
+        "version": "1.0.0",
+        "manifestSha256": "88ac89ba12849303d140fc9a667de1d5d7a21d511253d3a345d953ddc275abd0"
+      },
+      "simulator": {
+        "keyId": "empresa-modelo-demo"
+      },
+      "whatsapp": {
+        "enabled": false,
+        "wabaId": "000000000000000",
+        "phoneNumberId": "000000000000000"
+      }
+    }
+  ]
+}

@@ -5,8 +5,7 @@ Execute primeiro:
 ```powershell
 pnpm brain:validate
 pnpm brain:publish --agent empresa-modelo --as-of 2026-07-12 --check
-pnpm typecheck
-pnpm test
+pnpm verify:deploy
 pnpm chat
 ```
 
@@ -41,6 +40,36 @@ Remove-Item Env:AGENT_RELEASES_ROOT -ErrorAction SilentlyContinue
 Sem seletores, `development` e `test` podem usar `COMPANY_CONFIG_PATH`. Faça também um teste negativo
 com `NODE_ENV=production`: sem os três seletores obrigatórios, o processo deve falhar; produção nunca
 pode cair automaticamente para o JSON de desenvolvimento.
+
+## Persistência SQLite
+
+```powershell
+$env:STORAGE_DRIVER = "sqlite"
+$env:SQLITE_PATH = "./data/teste-local.sqlite"
+pnpm dev
+```
+
+Faça opt-out, crie um lead e encerre o processo. Reinicie com o mesmo arquivo e confirme que sessão,
+protocolo e deduplicação permanecem. Os testes automatizados também cobrem reabertura, claim stale,
+TTL, commit atômico e retomada sem protocolo duplicado. Nunca commite arquivos `.sqlite`/`.db`.
+
+## Registro multi-tenant
+
+Copie `config/tenants.example.json` para um local privado, configure `TENANT_REGISTRY_PATH` e forneça
+`SIMULATOR_TENANT_TOKENS` pelo ambiente. Valide que:
+
+1. o mesmo `userId` e `messageId` em dois tenants não compartilham estado;
+2. token do tenant A na rota do tenant B retorna 401;
+3. binding WABA correto com número incorreto é ignorado;
+4. apenas a combinação WABA + número seleciona o agente;
+5. nenhum token aparece no arquivo de registro ou nos logs.
+
+## Assinatura de release
+
+Os testes geram chaves Ed25519 efêmeras e verificam assinatura válida, chave desconhecida, manifesto
+alterado e release sem assinatura. Em homologação, configure `REQUIRE_RELEASE_SIGNATURE=true` e a
+âncora independente `RELEASE_TRUSTED_PUBLIC_KEYS`; remover ou alterar `manifest.sig.json` deve impedir
+o startup.
 
 ## Teste de rollback
 

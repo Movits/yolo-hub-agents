@@ -59,10 +59,12 @@ describe("WhatsApp payload parser", () => {
       object: "whatsapp_business_account",
       entry: [
         {
+          id: "waba-status",
           changes: [
             {
               field: "messages",
               value: {
+                metadata: { phone_number_id: "phone-status" },
                 statuses: [
                   {
                     id: "wamid-out",
@@ -82,7 +84,9 @@ describe("WhatsApp payload parser", () => {
     expect(extractWhatsAppStatuses(payload)[0]).toMatchObject({
       messageId: "wamid-out",
       status: "delivered",
-      recipientId: "5511999"
+      recipientId: "5511999",
+      wabaId: "waba-status",
+      phoneNumberId: "phone-status"
     });
   });
 });

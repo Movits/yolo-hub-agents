@@ -6,6 +6,7 @@ import {
   publishCompiledBrain
 } from "./publisher.js";
 import { loadPinnedKnowledgeRelease } from "../config/release.js";
+import { parseTrustedReleaseKeys } from "./release-signature.js";
 
 interface CliOptions {
   agentId: string;
@@ -77,7 +78,8 @@ async function main(): Promise<void> {
       releasesRoot: options.releasesRoot,
       agentId: compiled.manifest.agentId,
       version: compiled.manifest.version,
-      expectedManifestSha256: compiled.manifestSha256
+      expectedManifestSha256: compiled.manifestSha256,
+      trustedPublicKeys: parseTrustedReleaseKeys(process.env.RELEASE_TRUSTED_PUBLIC_KEYS)
     });
     process.stdout.write(
       `Brain e release verificadas: ${compiled.manifest.agentId}@${compiled.manifest.version}, ` +

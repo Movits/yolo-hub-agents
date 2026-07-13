@@ -4,6 +4,13 @@ const slugPattern = /^[a-z0-9][a-z0-9-]*$/;
 const semverPattern = /^\d+\.\d+\.\d+$/;
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const sha256Pattern = /^[a-f0-9]{64}$/;
+const relativePathSchema = z.string().min(1).refine(
+  (value) =>
+    !value.startsWith("/") &&
+    !value.includes("\\") &&
+    value.split("/").every((segment) => segment && segment !== "." && segment !== ".."),
+  { message: "Caminho POSIX relativo esperado." }
+);
 
 function isCalendarDate(value: string): boolean {
   const [year, month, day] = value.split("-").map(Number);
@@ -39,7 +46,7 @@ export const releaseManifestSchema = z
     inputs: z.array(
       z
         .object({
-          path: z.string().min(1),
+          path: relativePathSchema,
           id: z.string().min(1),
           type: z.string().min(1),
           version: z.string().regex(semverPattern),
@@ -52,7 +59,7 @@ export const releaseManifestSchema = z
     policyInputs: z.array(
       z
         .object({
-          path: z.string().min(1),
+          path: relativePathSchema,
           id: z.string().min(1),
           type: z.string().min(1),
           version: z.string().regex(semverPattern),
@@ -70,7 +77,7 @@ export const releaseManifestSchema = z
       .strict(),
     evals: z
       .object({
-        files: z.array(z.string().min(1)),
+        files: z.array(relativePathSchema),
         suiteSha256: z.string().regex(sha256Pattern),
         critical: z.number().int().positive(),
         passed: z.number().int().positive(),

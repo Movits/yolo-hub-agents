@@ -47,10 +47,17 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
   COMPANY_CONFIG_PATH: z.string().default("./config/company.example.json"),
+  STORAGE_DRIVER: z.enum(["memory", "sqlite"]).default("memory"),
+  SQLITE_PATH: z.string().default("./data/yolo-hub.sqlite"),
   AGENT_ID: optionalSecret,
   AGENT_RELEASE_VERSION: optionalSecret,
   AGENT_RELEASE_MANIFEST_SHA256: optionalSecret,
   AGENT_RELEASES_ROOT: z.string().default("./config/releases"),
+  REQUIRE_RELEASE_SIGNATURE: booleanValue("false"),
+  RELEASE_TRUSTED_PUBLIC_KEYS: optionalSecret,
+  TENANT_REGISTRY_PATH: optionalSecret,
+  DEFAULT_TENANT_ID: z.string().regex(/^[a-z0-9][a-z0-9-]*$/).default("empresa-modelo"),
+  SIMULATOR_TENANT_TOKENS: optionalSecret,
   DEMO_HOSTED: booleanValue("false"),
   ENABLE_SIMULATOR: booleanValue("false"),
   ENABLE_DEBUG_ENDPOINTS: booleanValue("false"),
@@ -85,6 +92,10 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
   return {
     ...env,
     COMPANY_CONFIG_PATH: resolve(env.COMPANY_CONFIG_PATH),
-    AGENT_RELEASES_ROOT: resolve(env.AGENT_RELEASES_ROOT)
+    SQLITE_PATH: resolve(env.SQLITE_PATH),
+    AGENT_RELEASES_ROOT: resolve(env.AGENT_RELEASES_ROOT),
+    ...(env.TENANT_REGISTRY_PATH
+      ? { TENANT_REGISTRY_PATH: resolve(env.TENANT_REGISTRY_PATH) }
+      : {})
   };
 }

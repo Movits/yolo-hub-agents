@@ -83,7 +83,8 @@ describe("runtime fixado em release", () => {
     expect(release.identity).toEqual({
       agentId: "empresa-modelo",
       version: "1.0.0",
-      manifestSha256
+      manifestSha256,
+      signatureVerified: false
     });
     expect(release.knowledge.agentId).toBe("empresa-modelo");
   });
@@ -183,13 +184,35 @@ describe("runtime fixado em release", () => {
     expect(() => createRuntime({ env: partial, llm: null })).toThrow("incompleta");
   });
 
+  it("seleciona SQLite durável explicitamente sem alterar o fallback de conhecimento", async () => {
+    const directory = await temporaryDirectory("runtime-sqlite-");
+    const env = loadEnv({
+      NODE_ENV: "test",
+      LOG_LEVEL: "silent",
+      COMPANY_CONFIG_PATH: resolve("config/company.example.json"),
+      STORAGE_DRIVER: "sqlite",
+      SQLITE_PATH: resolve(directory, "runtime.sqlite"),
+      OPENAI_API_KEY: "",
+      WHATSAPP_SEND_ENABLED: "false"
+    });
+    const runtime = createRuntime({ env, llm: null });
+    expect(runtime.store).toMatchObject({ driver: "sqlite", durability: "durable" });
+    runtime.store.close?.();
+  });
+
   it("rejeita contadores inconsistentes de avaliações no contrato da release", async () => {
-    const manifest = JSON.parse(
-      await readFile(resolve(trackedReleasesRoot, "empresa-modelo/1.0.0/manifest.json"), "utf8")
-    ) as { evals: { passed: number } };
+    const contents = await readFile(
+      resolve(trackedReleasesRoot, "empresa-modelo/1.0.0/manifest.json"),
+      "utf8"
+    );
+    const manifest = JSON.parse(contents) as { evals: { passed: number } };
     manifest.evals.passed = 1;
 
     expect(() => releaseManifestSchema.parse(manifest)).toThrow("passed deve ser igual");
+
+    const traversal = JSON.parse(contents) as { inputs: Array<{ path: string }> };
+    traversal.inputs[0]!.path = "../brain-privada.md";
+    expect(() => releaseManifestSchema.parse(traversal)).toThrow("Caminho POSIX relativo");
   });
 
   it("falha fechado em produção sem release e rejeita override direto", () => {

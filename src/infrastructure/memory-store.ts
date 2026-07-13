@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import type { SessionStore } from "../application/ports.js";
 import type {
   AgentResult,
@@ -15,8 +15,13 @@ function now(): string {
   return new Date().toISOString();
 }
 
-function shortId(prefix: string): string {
-  return `${prefix}-${randomUUID().replaceAll("-", "").slice(0, 10).toUpperCase()}`;
+function operationId(prefix: string, tenant: TenantContext, sourceMessageId: string): string {
+  const digest = createHash("sha256")
+    .update(tenantScopeKey(tenant, sourceMessageId))
+    .digest("hex")
+    .slice(0, 24)
+    .toUpperCase();
+  return `${prefix}-${digest}`;
 }
 
 function belongsToTenant(
@@ -41,6 +46,8 @@ function newSession(tenant: TenantContext, userId: string): ConversationSession 
 }
 
 export class MemoryStore implements SessionStore {
+  readonly driver = "memory";
+  readonly durability = "ephemeral" as const;
   private readonly sessions = new Map<string, ConversationSession>();
   private readonly processedMessages = new Map<
     string,
@@ -104,6 +111,16 @@ export class MemoryStore implements SessionStore {
     entry.result = structuredClone(result);
   }
 
+  commitResult(
+    tenant: TenantContext,
+    messageId: string,
+    session: ConversationSession,
+    result: AgentResult
+  ): void {
+    this.saveSession(tenant, session);
+    this.saveProcessedResult(tenant, messageId, result);
+  }
+
   getProcessedResult(tenant: TenantContext, messageId: string): AgentResult | undefined {
     const result = this.processedMessages.get(tenantScopeKey(tenant, messageId))?.result;
     return result ? structuredClone(result) : undefined;
@@ -120,20 +137,23 @@ export class MemoryStore implements SessionStore {
 
   createLead(
     tenant: TenantContext,
+    sourceMessageId: string,
     input: Omit<LeadRecord, "tenantId" | "agentId" | "id" | "createdAt">
   ): LeadRecord {
     const record: LeadRecord = {
       ...tenant,
       ...input,
-      id: shortId("LEAD"),
+      id: operationId("LEAD", tenant, sourceMessageId),
       createdAt: now()
     };
-    this.leads.push(record);
-    return structuredClone(record);
+    const existing = this.leads.find((lead) => lead.id === record.id);
+    if (!existing) this.leads.push(record);
+    return structuredClone(existing ?? record);
   }
 
   createAppointment(
     tenant: TenantContext,
+    sourceMessageId: string,
     input: Omit<
       AppointmentRequest,
       "tenantId" | "agentId" | "id" | "createdAt" | "status"
@@ -142,27 +162,30 @@ export class MemoryStore implements SessionStore {
     const record: AppointmentRequest = {
       ...tenant,
       ...input,
-      id: shortId("AGENDA"),
+      id: operationId("AGENDA", tenant, sourceMessageId),
       status: "pending_human_confirmation",
       createdAt: now()
     };
-    this.appointments.push(record);
-    return structuredClone(record);
+    const existing = this.appointments.find((appointment) => appointment.id === record.id);
+    if (!existing) this.appointments.push(record);
+    return structuredClone(existing ?? record);
   }
 
   createTicket(
     tenant: TenantContext,
+    sourceMessageId: string,
     input: Omit<SupportTicket, "tenantId" | "agentId" | "id" | "createdAt" | "status">
   ): SupportTicket {
     const record: SupportTicket = {
       ...tenant,
       ...input,
-      id: shortId("ATD"),
+      id: operationId("ATD", tenant, sourceMessageId),
       status: "queued",
       createdAt: now()
     };
-    this.tickets.push(record);
-    return structuredClone(record);
+    const existing = this.tickets.find((ticket) => ticket.id === record.id);
+    if (!existing) this.tickets.push(record);
+    return structuredClone(existing ?? record);
   }
 
   snapshot(tenant: TenantContext): {
