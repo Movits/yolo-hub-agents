@@ -158,14 +158,16 @@ desabilitados.
 
 ## Demo online: GitHub Pages + Render
 
-O frontend estático fica no GitHub Pages e o backend Fastify fica em um Web Service do Render. O
-arquivo `render.yaml` descreve o serviço de demonstração; o workflow `.github/workflows/pages.yml`
-publica somente a pasta `public/`.
+O frontend estático fica no GitHub Pages e o backend Fastify fica em um Web Service do Render. Este
+repositório mantém o código-fonte canônico em `public/` e o `render.yaml` do backend. A publicação do
+Pages é feita pelo repositório separado
+[`Movits/yolo-hub-agents-demo`](https://github.com/Movits/yolo-hub-agents-demo); o workflow de Pages
+pertence a esse repositório de deploy, não ao `main` deste projeto.
 
 1. Crie o serviço pelo Blueprint do Render e informe um `SIMULATOR_API_TOKEN` aleatório com pelo
    menos 32 caracteres.
-2. Cadastre a URL final do Render na variável de repositório `BACKEND_URL`.
-3. Ative GitHub Pages com origem **GitHub Actions** e execute o workflow.
+2. No repositório de deploy, cadastre a URL final do Render na variável `BACKEND_URL`.
+3. Execute o workflow do GitHub Pages no repositório de deploy.
 4. Abra a página, informe o token temporário no diálogo **Backend** e use apenas dados fictícios.
 
 O token nunca é incluído no artefato do Pages: ele permanece somente em `sessionStorage` durante a

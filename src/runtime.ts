@@ -5,6 +5,10 @@ import { MetaWhatsAppClient } from "./adapters/whatsapp/meta-client.js";
 import { loadCompanyConfig } from "./config/company.js";
 import { loadEnv, type AppEnv } from "./config/env.js";
 import type { BusinessKnowledge } from "./domain/types.js";
+import {
+  DEFAULT_TENANT_CONTEXT,
+  type TenantContext
+} from "./domain/tenant.js";
 import { MemoryStore } from "./infrastructure/memory-store.js";
 
 export interface RuntimeOptions {
@@ -13,6 +17,7 @@ export interface RuntimeOptions {
   store?: MemoryStore;
   llm?: LlmResponder | null;
   messenger?: OutboundMessenger;
+  tenantContext?: TenantContext;
 }
 
 export function createRuntime(options: RuntimeOptions = {}): {
@@ -21,10 +26,15 @@ export function createRuntime(options: RuntimeOptions = {}): {
   store: MemoryStore;
   llm: LlmResponder | undefined;
   messenger: OutboundMessenger;
+  tenantContext: TenantContext;
   agent: BusinessAgent;
 } {
   const env = options.env ?? loadEnv();
   const knowledge = options.knowledge ?? loadCompanyConfig(env.COMPANY_CONFIG_PATH);
+  const tenantContext = options.tenantContext ?? DEFAULT_TENANT_CONTEXT;
+  if (tenantContext.agentId !== knowledge.agentId) {
+    throw new Error("TenantContext.agentId deve corresponder ao conhecimento carregado.");
+  }
   const store = options.store ?? new MemoryStore();
   const llm =
     options.llm === null
@@ -43,7 +53,7 @@ export function createRuntime(options: RuntimeOptions = {}): {
         ? { defaultPhoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID }
         : {})
     });
-  const agent = new BusinessAgent(knowledge, store, llm);
+  const agent = new BusinessAgent(tenantContext, knowledge, store, llm);
 
-  return { env, knowledge, store, llm, messenger, agent };
+  return { env, knowledge, store, llm, messenger, tenantContext, agent };
 }

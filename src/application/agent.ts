@@ -17,6 +17,7 @@ import type {
   ReplySource,
   SupportTicket
 } from "../domain/types.js";
+import { tenantScopeKey, type TenantContext } from "../domain/tenant.js";
 
 const optOutPhrases = [
   "stop",
@@ -132,12 +133,18 @@ export class BusinessAgent {
   private readonly pendingPauseRequests = new Map<string, number>();
 
   constructor(
+    private readonly tenant: TenantContext,
     private readonly knowledge: BusinessKnowledge,
     private readonly store: SessionStore,
     private readonly llm?: LlmResponder
-  ) {}
+  ) {
+    if (tenant.agentId !== knowledge.agentId) {
+      throw new Error("TenantContext.agentId deve corresponder ao conhecimento carregado.");
+    }
+  }
 
   process(message: IncomingMessage): Promise<AgentResult> {
+    const userKey = this.scopedUserKey(message.userId);
     const requestsPause =
       isOptOutRequest(message.text) ||
       isHumanRequest(message.text) ||
@@ -145,47 +152,47 @@ export class BusinessAgent {
       isComplaintRequest(message.text);
     if (requestsPause) {
       this.pendingPauseRequests.set(
-        message.userId,
-        (this.pendingPauseRequests.get(message.userId) ?? 0) + 1
+        userKey,
+        (this.pendingPauseRequests.get(userKey) ?? 0) + 1
       );
     }
 
-    const previous = this.userQueues.get(message.userId) ?? Promise.resolve(undefined);
+    const previous = this.userQueues.get(userKey) ?? Promise.resolve(undefined);
     const current = previous
       .catch(() => undefined)
       .then(() => this.processSequential(message))
       .catch((error: unknown) => {
-        this.store.releaseMessage(message.id);
+        this.store.releaseMessage(this.tenant, message.id);
         throw error;
       });
-    this.userQueues.set(message.userId, current);
+    this.userQueues.set(userKey, current);
 
     return current.finally(() => {
       if (requestsPause) {
-        const remaining = (this.pendingPauseRequests.get(message.userId) ?? 1) - 1;
-        if (remaining <= 0) this.pendingPauseRequests.delete(message.userId);
-        else this.pendingPauseRequests.set(message.userId, remaining);
+        const remaining = (this.pendingPauseRequests.get(userKey) ?? 1) - 1;
+        if (remaining <= 0) this.pendingPauseRequests.delete(userKey);
+        else this.pendingPauseRequests.set(userKey, remaining);
       }
-      if (this.userQueues.get(message.userId) === current) {
-        this.userQueues.delete(message.userId);
+      if (this.userQueues.get(userKey) === current) {
+        this.userQueues.delete(userKey);
       }
     });
   }
 
   shouldSendOutbound(userId: string, result: AgentResult): boolean {
     if (!result.reply || result.suppressed) return false;
-    if (this.pendingPauseRequests.has(userId)) return false;
+    if (this.pendingPauseRequests.has(this.scopedUserKey(userId))) return false;
 
-    const session = this.store.getSession(userId);
+    const session = this.store.getSession(this.tenant, userId);
     if (session.status === "active") return true;
     if (session.status === "human_handoff") return result.handoff;
     return result.intent === "opt_out" || result.intent === "opt_in";
   }
 
   private async processSequential(message: IncomingMessage): Promise<AgentResult> {
-    if (!this.store.markMessageProcessed(message.id)) {
-      const current = this.store.getSession(message.userId);
-      const cached = this.store.getProcessedResult(message.id);
+    if (!this.store.markMessageProcessed(this.tenant, message.id)) {
+      const current = this.store.getSession(this.tenant, message.userId);
+      const cached = this.store.getProcessedResult(this.tenant, message.id);
       if (cached) {
         return {
           ...cached,
@@ -203,10 +210,10 @@ export class BusinessAgent {
       });
     }
 
-    let session = this.store.getSession(message.userId);
+    let session = this.store.getSession(this.tenant, message.userId);
 
     if (message.source === "simulator" && normalizeText(message.text) === "reset") {
-      session = this.store.resetSession(message.userId);
+      session = this.store.resetSession(this.tenant, message.userId);
       return this.respond(session, message, {
         reply: "Conversa reiniciada. Como posso ajudar?",
         intent: "greeting",
@@ -443,7 +450,7 @@ export class BusinessAgent {
 
       case "lead_confirm":
         if (isPositive(value)) {
-          const lead = this.store.createLead({
+          const lead = this.store.createLead(this.tenant, {
             userId: session.userId,
             name: session.flowData.name ?? "",
             company: session.flowData.company ?? "",
@@ -523,7 +530,7 @@ export class BusinessAgent {
 
       case "schedule_confirm":
         if (isPositive(value)) {
-          const appointment = this.store.createAppointment({
+          const appointment = this.store.createAppointment(this.tenant, {
             userId: session.userId,
             service: session.flowData.service ?? "",
             preferredDateTime: session.flowData.preferredDateTime ?? "",
@@ -797,7 +804,7 @@ export class BusinessAgent {
     ]
       .join(" | ")
       .slice(0, 1_500);
-    const ticket = this.store.createTicket({
+    const ticket = this.store.createTicket(this.tenant, {
       userId: session.userId,
       category,
       summary,
@@ -930,10 +937,14 @@ export class BusinessAgent {
       }
       session.history = session.history.slice(-20);
     }
-    this.store.saveSession(session);
+    this.store.saveSession(this.tenant, session);
     const result = this.result(session, input);
-    this.store.saveProcessedResult(message.id, result);
+    this.store.saveProcessedResult(this.tenant, message.id, result);
     return result;
+  }
+
+  private scopedUserKey(userId: string): string {
+    return tenantScopeKey(this.tenant, userId);
   }
 
   private result(session: ConversationSession, input: ResponseInput): AgentResult {

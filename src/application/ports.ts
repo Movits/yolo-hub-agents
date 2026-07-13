@@ -7,22 +7,33 @@ import type {
   LlmDecision,
   SupportTicket
 } from "../domain/types.js";
+import type { TenantContext } from "../domain/tenant.js";
 
 export interface SessionStore {
-  getSession(userId: string): ConversationSession;
-  saveSession(session: ConversationSession): void;
-  resetSession(userId: string): ConversationSession;
-  markMessageProcessed(messageId: string): boolean;
-  releaseMessage(messageId: string): void;
-  saveProcessedResult(messageId: string, result: AgentResult): void;
-  getProcessedResult(messageId: string): AgentResult | undefined;
-  markOutboundSettled(messageId: string): void;
-  isOutboundSettled(messageId: string): boolean;
-  createLead(input: Omit<LeadRecord, "id" | "createdAt">): LeadRecord;
+  getSession(tenant: TenantContext, userId: string): ConversationSession;
+  saveSession(tenant: TenantContext, session: ConversationSession): void;
+  resetSession(tenant: TenantContext, userId: string): ConversationSession;
+  markMessageProcessed(tenant: TenantContext, messageId: string): boolean;
+  releaseMessage(tenant: TenantContext, messageId: string): void;
+  saveProcessedResult(tenant: TenantContext, messageId: string, result: AgentResult): void;
+  getProcessedResult(tenant: TenantContext, messageId: string): AgentResult | undefined;
+  markOutboundSettled(tenant: TenantContext, messageId: string): void;
+  isOutboundSettled(tenant: TenantContext, messageId: string): boolean;
+  createLead(
+    tenant: TenantContext,
+    input: Omit<LeadRecord, "tenantId" | "agentId" | "id" | "createdAt">
+  ): LeadRecord;
   createAppointment(
-    input: Omit<AppointmentRequest, "id" | "createdAt" | "status">
+    tenant: TenantContext,
+    input: Omit<
+      AppointmentRequest,
+      "tenantId" | "agentId" | "id" | "createdAt" | "status"
+    >
   ): AppointmentRequest;
-  createTicket(input: Omit<SupportTicket, "id" | "createdAt" | "status">): SupportTicket;
+  createTicket(
+    tenant: TenantContext,
+    input: Omit<SupportTicket, "tenantId" | "agentId" | "id" | "createdAt" | "status">
+  ): SupportTicket;
 }
 
 export interface LlmResponder {

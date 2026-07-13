@@ -7,6 +7,7 @@ import type { RuntimeOptions } from "../runtime.js";
 import { createRuntime } from "../runtime.js";
 import { extractWhatsAppMessages, extractWhatsAppStatuses } from "../adapters/whatsapp/payload.js";
 import { verifyMetaSignature } from "../adapters/whatsapp/signature.js";
+import { tenantScopeKey } from "../domain/tenant.js";
 
 declare module "fastify" {
   interface FastifyRequest {
@@ -35,7 +36,7 @@ function secretsMatch(provided: string | undefined, expected: string): boolean {
 
 export function buildServer(options: RuntimeOptions = {}): FastifyInstance {
   const runtime = createRuntime(options);
-  const { env, knowledge, store, agent, messenger } = runtime;
+  const { env, knowledge, store, agent, messenger, tenantContext } = runtime;
   const production = env.NODE_ENV === "production";
   const loopbackHost = ["127.0.0.1", "localhost", "::1"].includes(env.HOST);
   const localSimulatorEnabled = !production && env.ENABLE_SIMULATOR;
@@ -94,11 +95,12 @@ export function buildServer(options: RuntimeOptions = {}): FastifyInstance {
   const outboundQueues = new Map<string, Promise<void>>();
 
   const enqueueOutbound = (userId: string, task: () => Promise<void>): Promise<void> => {
-    const previous = outboundQueues.get(userId) ?? Promise.resolve();
+    const queueKey = tenantScopeKey(tenantContext, userId);
+    const previous = outboundQueues.get(queueKey) ?? Promise.resolve();
     const current = previous.catch(() => undefined).then(task);
-    outboundQueues.set(userId, current);
+    outboundQueues.set(queueKey, current);
     return current.finally(() => {
-      if (outboundQueues.get(userId) === current) outboundQueues.delete(userId);
+      if (outboundQueues.get(queueKey) === current) outboundQueues.delete(queueKey);
     });
   };
 
@@ -256,7 +258,7 @@ export function buildServer(options: RuntimeOptions = {}): FastifyInstance {
       if (!parsed.success) {
         return reply.code(400).send({ error: "invalid_request", details: parsed.error.flatten() });
       }
-      const session = store.resetSession(parsed.data.userId);
+      const session = store.resetSession(tenantContext, parsed.data.userId);
       return { reset: true, state: { status: session.status, flow: session.flow } };
     });
 
@@ -265,7 +267,7 @@ export function buildServer(options: RuntimeOptions = {}): FastifyInstance {
       if (!parsed.success) {
         return reply.code(400).send({ error: "invalid_request", details: parsed.error.flatten() });
       }
-      const session = store.getSession(parsed.data.userId);
+      const session = store.getSession(tenantContext, parsed.data.userId);
       return {
         state: { status: session.status, flow: session.flow },
         lastUserMessageAt: session.lastUserMessageAt ?? null
@@ -276,7 +278,7 @@ export function buildServer(options: RuntimeOptions = {}): FastifyInstance {
   if (!production && env.ENABLE_DEBUG_ENDPOINTS) {
     app.get("/api/debug/state", async () => ({
       warning: "Endpoint local: contém dados fornecidos durante os testes.",
-      ...store.snapshot()
+      ...store.snapshot(tenantContext)
     }));
   }
 
@@ -359,10 +361,15 @@ export function buildServer(options: RuntimeOptions = {}): FastifyInstance {
         try {
           await enqueueOutbound(message.userId, async () => {
             const { result } = outcome;
-            if (!messenger.enabled || !result.reply || store.isOutboundSettled(message.id)) return;
+            if (
+              !messenger.enabled ||
+              !result.reply ||
+              store.isOutboundSettled(tenantContext, message.id)
+            )
+              return;
 
             if (!agent.shouldSendOutbound(message.userId, result)) {
-              store.markOutboundSettled(message.id);
+              store.markOutboundSettled(tenantContext, message.id);
               return;
             }
 
@@ -371,7 +378,7 @@ export function buildServer(options: RuntimeOptions = {}): FastifyInstance {
               text: result.reply,
               ...(message.phoneNumberId ? { phoneNumberId: message.phoneNumberId } : {})
             });
-            store.markOutboundSettled(message.id);
+            store.markOutboundSettled(tenantContext, message.id);
             request.log.info(
               {
                 inboundMessageId: message.id,

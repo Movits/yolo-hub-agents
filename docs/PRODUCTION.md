@@ -2,6 +2,12 @@
 
 O protótipo foi desenhado para facilitar a evolução, mas não deve atender clientes reais apenas trocando as chaves.
 
+O runtime possui uma fundação tenant-aware em memória: sessões, deduplicação, filas locais, leads,
+agendamentos e tickets são escopados por `tenantId` e `agentId`. Isso ainda não é multitenancy
+operacional. Cada processo continua carregando um único conhecimento, uma única configuração de
+WABA/número e credenciais únicas; persistência, roteamento dinâmico e isolamento de infraestrutura
+continuam obrigatórios antes de clientes reais.
+
 ## Obrigatório antes do lançamento
 
 - substituir todos os dados fictícios e obter aprovação das respostas;
