@@ -1,10 +1,23 @@
 import { createHmac } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 import type { OutboundMessenger } from "../src/application/ports.js";
 import { loadEnv } from "../src/config/env.js";
 import { buildServer } from "../src/http/server.js";
+
+function releaseSelection(): NodeJS.ProcessEnv {
+  return {
+    AGENT_ID: "empresa-modelo",
+    AGENT_RELEASE_VERSION: "1.0.0",
+    AGENT_RELEASE_MANIFEST_SHA256: readFileSync(
+      resolve("config/releases/empresa-modelo/1.0.0/manifest.sha256"),
+      "utf8"
+    ).trim(),
+    AGENT_RELEASES_ROOT: resolve("config/releases")
+  };
+}
 
 class MockMessenger implements OutboundMessenger {
   readonly enabled = true;
@@ -89,6 +102,7 @@ function hostedDemoEnv(overrides: NodeJS.ProcessEnv = {}) {
     OPENAI_API_KEY: "",
     META_APP_SECRET: "",
     WHATSAPP_SEND_ENABLED: "false",
+    ...releaseSelection(),
     ...overrides
   });
 }
@@ -164,6 +178,10 @@ describe("HTTP server", () => {
     expect(sessionState.json().state).toEqual({ status: "active", flow: "none" });
     expect(simulated.statusCode).toBe(200);
     expect(simulated.json().reply).toContain("segunda a sexta");
+    expect(simulated.json()).toMatchObject({
+      agentId: "empresa-modelo",
+      releaseVersion: "dev-fallback"
+    });
     const configAsset = await app.inject({
       method: "GET",
       url: "/config.js"
@@ -177,6 +195,7 @@ describe("HTTP server", () => {
       NODE_ENV: "production",
       LOG_LEVEL: "silent",
       COMPANY_CONFIG_PATH: resolve("config/company.example.json"),
+      ...releaseSelection(),
       META_APP_SECRET: "",
       WHATSAPP_SEND_ENABLED: "false"
     });
@@ -186,22 +205,21 @@ describe("HTTP server", () => {
       NODE_ENV: "production",
       LOG_LEVEL: "silent",
       COMPANY_CONFIG_PATH: resolve("config/company.example.json"),
+      ...releaseSelection(),
       META_APP_SECRET: "production-secret",
       WHATSAPP_WABA_ID: "waba-production",
       WHATSAPP_PHONE_NUMBER_ID: "phone-production",
       WHATSAPP_SEND_ENABLED: "false"
     });
-    app = buildServer({ env: production, llm: null });
-
-    expect((await app.inject({ method: "GET", url: "/health" })).json()).toEqual({ status: "ok" });
-    expect((await app.inject({ method: "POST", url: "/api/simulate", payload: {} })).statusCode).toBe(404);
-    expect((await app.inject({ method: "GET", url: "/api/debug/state" })).statusCode).toBe(404);
-    expect((await app.inject({ method: "GET", url: "/" })).statusCode).toBe(404);
+    expect(() => buildServer({ env: production, llm: null })).toThrow(
+      "release marcada como prototype"
+    );
 
     const unsafeAsync = loadEnv({
       NODE_ENV: "production",
       LOG_LEVEL: "silent",
       COMPANY_CONFIG_PATH: resolve("config/company.example.json"),
+      ...releaseSelection(),
       META_APP_SECRET: "production-secret",
       WHATSAPP_WABA_ID: "waba-production",
       WHATSAPP_PHONE_NUMBER_ID: "phone-production",
@@ -249,6 +267,10 @@ describe("HTTP server", () => {
     expect(simulated.statusCode).toBe(200);
     expect(simulated.headers["access-control-allow-origin"]).toBe(origin);
     expect(simulated.json().reply).toContain("segunda a sexta");
+    expect(simulated.json()).toMatchObject({
+      agentId: "empresa-modelo",
+      releaseVersion: "1.0.0"
+    });
     const health = await app.inject({ method: "GET", url: "/health", headers: { origin } });
     expect(health.headers["access-control-allow-origin"]).toBe(origin);
     expect(health.json()).toMatchObject({

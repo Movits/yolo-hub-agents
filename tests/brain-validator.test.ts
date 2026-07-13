@@ -31,6 +31,7 @@ function manifest(overrides: Record<string, unknown> = {}): Record<string, unkno
   return {
     schemaVersion: "1.0",
     version: "1.0.0",
+    releaseAsOf: "2026-07-12",
     id: "test-agent",
     displayName: "Test Agent",
     status: "active",

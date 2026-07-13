@@ -47,6 +47,10 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
   COMPANY_CONFIG_PATH: z.string().default("./config/company.example.json"),
+  AGENT_ID: optionalSecret,
+  AGENT_RELEASE_VERSION: optionalSecret,
+  AGENT_RELEASE_MANIFEST_SHA256: optionalSecret,
+  AGENT_RELEASES_ROOT: z.string().default("./config/releases"),
   DEMO_HOSTED: booleanValue("false"),
   ENABLE_SIMULATOR: booleanValue("false"),
   ENABLE_DEBUG_ENDPOINTS: booleanValue("false"),
@@ -80,6 +84,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
   const env = envSchema.parse(source);
   return {
     ...env,
-    COMPANY_CONFIG_PATH: resolve(env.COMPANY_CONFIG_PATH)
+    COMPANY_CONFIG_PATH: resolve(env.COMPANY_CONFIG_PATH),
+    AGENT_RELEASES_ROOT: resolve(env.AGENT_RELEASES_ROOT)
   };
 }

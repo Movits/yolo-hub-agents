@@ -13,13 +13,13 @@
     }
   ],
   "evals": {
-    "critical": 11,
+    "critical": 12,
     "failed": 0,
     "files": [
       "agents/empresa-modelo/evals/golden-cases.md"
     ],
-    "passed": 11,
-    "suiteSha256": "16abb484a20a7d045307ae1c554e2a0ea216abc8b36c0bdee90e101d396dbaaf"
+    "passed": 12,
+    "suiteSha256": "2e8b5c9254555089731f02a6fee75367415358b04df4f638b8d9cc02df8c86d6"
   },
   "inputs": [
     {
@@ -81,7 +81,63 @@
     "file": "business-knowledge.json",
     "sha256": "82eec3374748afc18148053a94dffca2c62750ffb25f8da788e9f6a5819db031"
   },
-  "publicationId": "sha256:17628b3f7f574689802eeba999a4641bce51e779ffadf16e26504c03039c34e3",
+  "policyInputs": [
+    {
+      "id": "shared.glossary.core",
+      "origin": "internal-architecture",
+      "path": "shared/glossary.md",
+      "sensitivity": "internal",
+      "sha256": "3afb4dfbf23e71f5b9076c8a0acf5eae2c2dfe029eced511ac2e341e20c438ff",
+      "type": "glossary",
+      "version": "1.0.0"
+    },
+    {
+      "id": "shared.policy.safety-and-handoff",
+      "origin": "internal-governance",
+      "path": "shared/policies/safety-and-handoff.md",
+      "sensitivity": "internal",
+      "sha256": "f0ca99f0ed1ed2e0b9f24e6d14806ff0447c7a05ab03ddcc52c5ed9af1aa5960",
+      "type": "policy",
+      "version": "1.0.0"
+    },
+    {
+      "id": "empresa-modelo.workflow.human-handoff",
+      "origin": "src/application/agent.ts",
+      "path": "agents/empresa-modelo/workflows/human-handoff.md",
+      "sensitivity": "internal",
+      "sha256": "3faa11cfe371a845322caf06fd92550d99ea1f568dafcb7512f5972fe232829c",
+      "type": "workflow",
+      "version": "1.0.0"
+    },
+    {
+      "id": "empresa-modelo.workflow.lead",
+      "origin": "src/application/agent.ts",
+      "path": "agents/empresa-modelo/workflows/lead.md",
+      "sensitivity": "internal",
+      "sha256": "16cfaaeaa39146d61928c11dbce82b7bf03733c2b3de3ea8bd46bb7e178ab8f9",
+      "type": "workflow",
+      "version": "1.0.0"
+    },
+    {
+      "id": "empresa-modelo.workflow.opt-out",
+      "origin": "src/application/agent.ts",
+      "path": "agents/empresa-modelo/workflows/opt-out.md",
+      "sensitivity": "internal",
+      "sha256": "02edab1492959796938e961f37447d240ef31762ab4a45be30122403eb6806eb",
+      "type": "workflow",
+      "version": "1.0.0"
+    },
+    {
+      "id": "empresa-modelo.workflow.scheduling",
+      "origin": "src/application/agent.ts",
+      "path": "agents/empresa-modelo/workflows/scheduling.md",
+      "sensitivity": "internal",
+      "sha256": "e6cae02de4231b15e7ed3f88322c97f1c51681b055a16f5db5de39f015a63042",
+      "type": "workflow",
+      "version": "1.0.0"
+    }
+  ],
+  "publicationId": "sha256:31ca545b9d47c88815271a5327da9ab8d085b4d69f833115d10d8786020f8e37",
   "publishedAt": "2026-07-12T00:00:00.000Z",
   "schemaVersion": "1.0",
   "version": "1.0.0"

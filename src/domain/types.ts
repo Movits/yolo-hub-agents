@@ -68,6 +68,8 @@ export interface ConversationSession {
 }
 
 export interface AgentResult {
+  agentId: string;
+  releaseVersion: string;
   reply: string | null;
   intent: Intent;
   source: ReplySource;

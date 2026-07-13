@@ -1,4 +1,5 @@
 import type { LlmResponder, SessionStore } from "./ports.js";
+import type { KnowledgeRelease } from "../config/release.js";
 import { findFaq, findSupportProcedure, formatServices } from "./knowledge.js";
 import {
   cleanUserValue,
@@ -10,7 +11,6 @@ import {
 } from "./text.js";
 import type {
   AgentResult,
-  BusinessKnowledge,
   ConversationSession,
   IncomingMessage,
   Intent,
@@ -131,14 +131,19 @@ function isFlowCancelRequest(text: string): boolean {
 export class BusinessAgent {
   private readonly userQueues = new Map<string, Promise<AgentResult>>();
   private readonly pendingPauseRequests = new Map<string, number>();
+  private readonly knowledge: KnowledgeRelease["knowledge"];
 
   constructor(
     private readonly tenant: TenantContext,
-    private readonly knowledge: BusinessKnowledge,
+    private readonly release: KnowledgeRelease,
     private readonly store: SessionStore,
     private readonly llm?: LlmResponder
   ) {
-    if (tenant.agentId !== knowledge.agentId) {
+    this.knowledge = release.knowledge;
+    if (
+      tenant.agentId !== release.identity.agentId ||
+      release.identity.agentId !== release.knowledge.agentId
+    ) {
       throw new Error("TenantContext.agentId deve corresponder ao conhecimento carregado.");
     }
   }
@@ -949,6 +954,8 @@ export class BusinessAgent {
 
   private result(session: ConversationSession, input: ResponseInput): AgentResult {
     return {
+      agentId: this.release.identity.agentId,
+      releaseVersion: this.release.identity.version,
       reply: input.reply,
       intent: input.intent,
       source: input.source,

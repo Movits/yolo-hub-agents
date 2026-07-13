@@ -17,9 +17,17 @@ import {
   businessKnowledgeSchema,
   parseBusinessKnowledge
 } from "../config/company.js";
+import {
+  createDevelopmentRelease,
+  loadPinnedKnowledgeRelease
+} from "../config/release.js";
 import type { BusinessKnowledge } from "../domain/types.js";
 import type { TenantContext } from "../domain/tenant.js";
 import { MemoryStore } from "../infrastructure/memory-store.js";
+import {
+  releaseManifestSchema,
+  type ReleaseManifest
+} from "./release-contract.js";
 
 const semverPattern = /^\d+\.\d+\.\d+$/;
 const slugPattern = /^[a-z0-9][a-z0-9-]*$/;
@@ -29,17 +37,30 @@ const agentManifestSchema = z
   .object({
     schemaVersion: z.literal("1.0"),
     version: z.string().regex(semverPattern),
+    releaseAsOf: z.string().regex(datePattern),
     id: z.string().regex(slugPattern),
     displayName: z.string().min(1),
     assistantName: z.string().min(1),
     status: z.enum(["prototype", "active"]),
-    extends: z.array(z.string().regex(slugPattern)),
-    knowledgeRoots: z.array(z.string().min(1)).min(1),
-    workflowRoots: z.array(z.string().min(1)),
-    evalRoots: z.array(z.string().min(1)).min(1),
+    extends: z.array(z.string().regex(slugPattern)).refine((values) => values.includes("shared"), {
+      message: "extends deve incluir shared"
+    }),
+    knowledgeRoots: z.array(z.string().regex(slugPattern)).min(1),
+    workflowRoots: z.array(z.string().regex(slugPattern)).min(1),
+    evalRoots: z.array(z.string().regex(slugPattern)).min(1),
     runtimeConfig: z.string().min(1),
     publishOnlyApproved: z.literal(true),
-    publishSensitivity: z.array(z.enum(["public", "public-business", "internal"]))
+    publishSensitivity: z.array(z.enum(["public", "public-business"])).min(1)
+  })
+  .strict();
+
+const segmentManifestSchema = z
+  .object({
+    schemaVersion: z.literal("1.0"),
+    version: z.string().regex(semverPattern),
+    id: z.string().regex(slugPattern),
+    status: z.enum(["prototype", "active"]),
+    knowledgeRoots: z.array(z.string().regex(slugPattern)).min(1)
   })
   .strict();
 
@@ -125,11 +146,28 @@ const evalExpectationSchema = z
     suppressed: z.boolean().optional(),
     duplicate: z.boolean().optional(),
     handoff: z.boolean().optional(),
-    replyNull: z.boolean().optional(),
+    replyNull: z.literal(true).optional(),
     replyIncludes: z.array(z.string()).optional(),
     replyExcludes: z.array(z.string()).optional()
   })
   .strict();
+
+const evalTurnSchema = z
+  .object({
+    messageId: z.string().min(1).optional(),
+    text: z.string().min(1).optional(),
+    textParts: z.array(z.string().min(1)).min(2).optional(),
+    expect: evalExpectationSchema.optional()
+  })
+  .strict()
+  .superRefine((turn, context) => {
+    if ((turn.text === undefined) === (turn.textParts === undefined)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Informe exatamente um de text ou textParts."
+      });
+    }
+  });
 
 const evalSuiteSchema = z
   .object({
@@ -141,22 +179,32 @@ const evalSuiteSchema = z
           .object({
             id: z.string().min(1),
             critical: z.boolean(),
-            turns: z
-              .array(
-                z
-                  .object({
-                    messageId: z.string().min(1).optional(),
-                    text: z.string().min(1),
-                    expect: evalExpectationSchema.optional()
-                  })
-                  .strict()
-              )
-              .min(1),
+            category: z.enum([
+              "grounding",
+              "consent",
+              "scheduling",
+              "handoff",
+              "opt-out",
+              "opt-in",
+              "prompt-safety",
+              "deduplication",
+              "fallback",
+              "redaction"
+            ]),
+            turns: z.array(evalTurnSchema).min(1),
             expectStore: z
               .object({
                 leads: z.number().int().min(0).optional(),
                 appointments: z.number().int().min(0).optional(),
-                tickets: z.number().int().min(0).optional()
+                tickets: z.number().int().min(0).optional(),
+                serializedExcludes: z.array(z.string().min(1)).optional(),
+                serializedExcludesParts: z
+                  .array(
+                    z
+                      .object({ parts: z.array(z.string().min(1)).min(2) })
+                      .strict()
+                  )
+                  .optional()
               })
               .strict()
               .optional()
@@ -167,59 +215,10 @@ const evalSuiteSchema = z
   })
   .strict();
 
-const releaseManifestSchema = z
-  .object({
-    schemaVersion: z.literal("1.0"),
-    compilerVersion: z.literal("1.0"),
-    publicationId: z.string().regex(/^sha256:[a-f0-9]{64}$/),
-    agentId: z.string().regex(slugPattern),
-    version: z.string().regex(semverPattern),
-    asOf: z.string().regex(datePattern),
-    publishedAt: z.string().datetime(),
-    composition: z.array(
-      z
-        .object({
-          layer: z.enum(["shared", "segment", "agent"]),
-          id: z.string().min(1)
-        })
-        .strict()
-    ),
-    inputs: z.array(
-      z
-        .object({
-          path: z.string().min(1),
-          id: z.string().min(1),
-          type: z.string().min(1),
-          version: z.string().regex(semverPattern),
-          sensitivity: z.string().min(1),
-          origin: z.string().min(1),
-          sha256: z.string().regex(/^[a-f0-9]{64}$/)
-        })
-        .strict()
-    ),
-    output: z
-      .object({
-        file: z.literal("business-knowledge.json"),
-        sha256: z.string().regex(/^[a-f0-9]{64}$/)
-      })
-      .strict(),
-    evals: z
-      .object({
-        files: z.array(z.string().min(1)),
-        suiteSha256: z.string().regex(/^[a-f0-9]{64}$/),
-        critical: z.number().int().positive(),
-        passed: z.number().int().positive(),
-        failed: z.literal(0)
-      })
-      .strict()
-  })
-  .strict();
-
 type AgentManifest = z.infer<typeof agentManifestSchema>;
 type NoteMetadata = z.infer<typeof noteMetadataSchema>;
 type RuntimeContribution = z.infer<typeof runtimeContributionSchema>;
 type EvalSuite = z.infer<typeof evalSuiteSchema>;
-export type ReleaseManifest = z.infer<typeof releaseManifestSchema>;
 
 interface ParsedNote {
   absolutePath: string;
@@ -227,12 +226,13 @@ interface ParsedNote {
   rawNormalized: string;
   metadata: NoteMetadata;
   body: string;
+  layer: "shared" | "segment" | "agent";
 }
 
 export interface CompileBrainOptions {
   projectRoot: string;
   agentId: string;
-  asOf: string;
+  asOf?: string;
   versionOverride?: string;
 }
 
@@ -285,7 +285,12 @@ function parseScalar(value: string): string | null {
   return trimmed;
 }
 
-function parseNote(absolutePath: string, relativePath: string, raw: string): ParsedNote {
+function parseNote(
+  absolutePath: string,
+  relativePath: string,
+  raw: string,
+  layer: ParsedNote["layer"]
+): ParsedNote {
   const normalized = normalizedText(raw);
   const match = normalized.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
   if (!match) throw new Error(`${relativePath}: frontmatter ausente ou inválido.`);
@@ -302,7 +307,8 @@ function parseNote(absolutePath: string, relativePath: string, raw: string): Par
     relativePath,
     rawNormalized: normalized,
     metadata: noteMetadataSchema.parse(metadata),
-    body: match[2] ?? ""
+    body: match[2] ?? "",
+    layer
   };
 }
 
@@ -328,8 +334,9 @@ async function fileExists(path: string): Promise<boolean> {
 }
 
 async function listMarkdownFiles(root: string): Promise<string[]> {
-  if (!(await fileExists(root))) return [];
-  const rootStats = await stat(root);
+  if (!(await fileExists(root))) throw new Error(`Raiz declarada não encontrada: ${root}`);
+  const rootStats = await lstat(root);
+  if (rootStats.isSymbolicLink()) throw new Error(`Symlink não permitido na raiz da brain: ${root}`);
   if (!rootStats.isDirectory()) throw new Error(`Raiz da brain não é diretório: ${root}`);
   const results: string[] = [];
   const visit = async (directory: string): Promise<void> => {
@@ -351,7 +358,14 @@ function posixRelative(root: string, path: string): string {
 }
 
 function assertAsOf(asOf: string): void {
-  if (!datePattern.test(asOf) || Number.isNaN(Date.parse(`${asOf}T00:00:00.000Z`))) {
+  const [year, month, day] = asOf.split("-").map(Number);
+  const date = new Date(Date.UTC(year!, month! - 1, day!));
+  if (
+    !datePattern.test(asOf) ||
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month! - 1 ||
+    date.getUTCDate() !== day
+  ) {
     throw new Error(`Data --as-of inválida: ${asOf}`);
   }
 }
@@ -373,6 +387,32 @@ export function evaluatePublishability(
     return { included: false, reason: `sensitivity:${metadata.sensitivity}` };
   }
   return { included: true, reason: "included" };
+}
+
+function manifestInput(note: ParsedNote): ReleaseManifest["inputs"][number] {
+  return {
+    path: note.relativePath,
+    id: note.metadata.id,
+    type: note.metadata.type,
+    version: note.metadata.version,
+    sensitivity: note.metadata.sensitivity,
+    origin: note.metadata.source,
+    sha256: sha256(note.rawNormalized)
+  };
+}
+
+function calculatePublicationId(input: {
+  compilerVersion: "1.0";
+  agentId: string;
+  version: string;
+  asOf: string;
+  composition: ReleaseManifest["composition"];
+  inputs: ReleaseManifest["inputs"];
+  policyInputs: ReleaseManifest["policyInputs"];
+  knowledgeSha256: string;
+  suiteSha256: string;
+}): string {
+  return `sha256:${sha256(canonicalJson(input))}`;
 }
 
 function assertUniqueIds<T extends { id: string }>(values: T[], label: string): void {
@@ -466,22 +506,41 @@ export async function runCriticalEvals(
   knowledge: BusinessKnowledge,
   suites: EvalSuite[]
 ): Promise<{ critical: number; passed: number; failed: 0 }> {
+  const requiredCategories = new Set([
+    "grounding",
+    "consent",
+    "scheduling",
+    "handoff",
+    "opt-out",
+    "opt-in",
+    "prompt-safety",
+    "deduplication",
+    "fallback",
+    "redaction"
+  ]);
+  const coveredCategories = new Set<string>();
+  const caseIds = new Set<string>();
   let critical = 0;
   for (const suite of suites) {
     for (const testCase of suite.cases) {
       if (!testCase.critical) continue;
+      if (caseIds.has(testCase.id)) throw new Error(`ID de avaliação duplicado: ${testCase.id}`);
+      caseIds.add(testCase.id);
+      coveredCategories.add(testCase.category);
       critical += 1;
       const tenant: TenantContext = {
         tenantId: `eval-${testCase.id}`.slice(0, 100),
         agentId: knowledge.agentId
       };
       const store = new MemoryStore();
-      const agent = new BusinessAgent(tenant, knowledge, store);
+      const agent = new BusinessAgent(tenant, createDevelopmentRelease(knowledge), store);
       for (const [turnIndex, turn] of testCase.turns.entries()) {
+        const text = turn.text ?? turn.textParts?.join("");
+        if (!text) throw new Error(`${suite.suiteId}/${testCase.id}: turno sem texto.`);
         const result = await agent.process({
           id: turn.messageId ?? `${testCase.id}-${turnIndex + 1}`,
           userId: "eval-user",
-          text: turn.text,
+          text,
           timestamp: new Date("2026-01-01T12:00:00.000Z"),
           source: "simulator",
           messageType: "text"
@@ -500,10 +559,27 @@ export async function runCriticalEvals(
             );
           }
         }
+        const serialized = JSON.stringify(snapshot);
+        for (const value of testCase.expectStore.serializedExcludes ?? []) {
+          if (serialized.includes(value)) {
+            throw new Error(`${suite.suiteId}/${testCase.id}: store contém valor proibido.`);
+          }
+        }
+        for (const composed of testCase.expectStore.serializedExcludesParts ?? []) {
+          if (serialized.includes(composed.parts.join(""))) {
+            throw new Error(`${suite.suiteId}/${testCase.id}: store contém valor proibido.`);
+          }
+        }
       }
     }
   }
   if (critical === 0) throw new Error("Nenhuma avaliação crítica foi encontrada.");
+  const missingCategories = [...requiredCategories].filter(
+    (category) => !coveredCategories.has(category)
+  );
+  if (missingCategories.length > 0) {
+    throw new Error(`Cobertura crítica ausente: ${missingCategories.join(", ")}.`);
+  }
   return { critical, passed: critical, failed: 0 };
 }
 
@@ -515,30 +591,61 @@ async function loadAgentManifest(projectRoot: string, agentId: string): Promise<
   if (!slugPattern.test(agentId)) throw new Error(`agentId inválido: ${agentId}`);
   const directory = resolve(projectRoot, "brain", "agents", agentId);
   const path = resolve(directory, "agent.json");
+  const directoryStats = await lstat(directory);
+  if (directoryStats.isSymbolicLink() || !directoryStats.isDirectory()) {
+    throw new Error(`Diretório de agente inválido: ${directory}`);
+  }
+  const manifestStats = await lstat(path);
+  if (manifestStats.isSymbolicLink() || !manifestStats.isFile()) {
+    throw new Error(`Manifesto de agente inválido: ${path}`);
+  }
   const manifest = agentManifestSchema.parse(JSON.parse(await readFile(path, "utf8")) as unknown);
   if (manifest.id !== agentId) throw new Error(`Manifesto ${path} declara id divergente.`);
   return { manifest, path, directory };
 }
 
 export async function compileBrain(options: CompileBrainOptions): Promise<CompiledBrainRelease> {
-  assertAsOf(options.asOf);
   const projectRoot = resolve(options.projectRoot);
   const brainRoot = resolve(projectRoot, "brain");
   const loaded = await loadAgentManifest(projectRoot, options.agentId);
+  const asOf = options.asOf ?? loaded.manifest.releaseAsOf;
+  assertAsOf(asOf);
   const releaseVersion = options.versionOverride ?? loaded.manifest.version;
   if (!semverPattern.test(releaseVersion)) throw new Error(`Versão inválida: ${releaseVersion}`);
 
   const roots: Array<{ layer: "shared" | "segment" | "agent"; id: string; path: string }> = [];
+  const composition: ReleaseManifest["composition"] = [];
   if (loaded.manifest.extends.includes("shared")) {
     roots.push({ layer: "shared", id: "shared", path: resolve(brainRoot, "shared") });
+    composition.push({ layer: "shared", id: "shared" });
   }
   for (const extension of loaded.manifest.extends.filter((value) => value !== "shared")) {
-    roots.push({
-      layer: "segment",
-      id: extension,
-      path: resolve(brainRoot, "segments", extension)
-    });
+    const segmentDirectory = resolve(brainRoot, "segments", extension);
+    const segmentManifestPath = resolve(segmentDirectory, "segment.json");
+    const segmentStats = await lstat(segmentDirectory);
+    if (segmentStats.isSymbolicLink() || !segmentStats.isDirectory()) {
+      throw new Error(`Diretório de segmento inválido: ${segmentDirectory}`);
+    }
+    const segmentManifestStats = await lstat(segmentManifestPath);
+    if (segmentManifestStats.isSymbolicLink() || !segmentManifestStats.isFile()) {
+      throw new Error(`Manifesto de segmento inválido: ${segmentManifestPath}`);
+    }
+    const segmentManifest = segmentManifestSchema.parse(
+      JSON.parse(await readFile(segmentManifestPath, "utf8")) as unknown
+    );
+    if (segmentManifest.id !== extension) {
+      throw new Error(`segment.json declara id divergente: ${extension}`);
+    }
+    composition.push({ layer: "segment", id: extension });
+    for (const knowledgeRoot of segmentManifest.knowledgeRoots) {
+      roots.push({
+        layer: "segment",
+        id: extension,
+        path: resolve(segmentDirectory, knowledgeRoot)
+      });
+    }
   }
+  composition.push({ layer: "agent", id: loaded.manifest.id });
   for (const knowledgeRoot of loaded.manifest.knowledgeRoots) {
     roots.push({
       layer: "agent",
@@ -554,7 +661,12 @@ export async function compileBrain(options: CompileBrainOptions): Promise<Compil
       const relativePath = posixRelative(brainRoot, absolutePath);
       if (seenPaths.has(relativePath)) continue;
       seenPaths.add(relativePath);
-      const note = parseNote(absolutePath, relativePath, await readFile(absolutePath, "utf8"));
+      const note = parseNote(
+        absolutePath,
+        relativePath,
+        await readFile(absolutePath, "utf8"),
+        root.layer
+      );
       const expectedAgent = root.layer === "shared" ? "shared" : root.id;
       if (note.metadata.agent !== expectedAgent) {
         throw new Error(`${relativePath}: agent esperado ${expectedAgent}, recebido ${note.metadata.agent}.`);
@@ -562,34 +674,55 @@ export async function compileBrain(options: CompileBrainOptions): Promise<Compil
       notes.push(note);
     }
   }
-  notes.sort((left, right) => compareText(left.relativePath, right.relativePath));
 
   const contributions: RuntimeContribution[] = [];
   const inputEntries: ReleaseManifest["inputs"] = [];
+  const policyInputEntries: ReleaseManifest["policyInputs"] = [];
   for (const note of notes) {
-    const decision = evaluatePublishability(
+    const buildDecision = evaluatePublishability(
+      note.metadata,
+      ["public", "public-business", "internal"],
+      asOf
+    );
+    if (!buildDecision.included) continue;
+    const block = extractJsonBlock(note.body, "brain-runtime");
+    const runtimeDecision = evaluatePublishability(
       note.metadata,
       loaded.manifest.publishSensitivity,
-      options.asOf
+      asOf
     );
-    if (!decision.included) continue;
-    const block = extractJsonBlock(note.body, "brain-runtime");
-    if (block === null) {
-      if (note.relativePath.startsWith(`agents/${options.agentId}/`)) {
-        throw new Error(`${note.relativePath}: nota publicável sem bloco brain-runtime.`);
-      }
+    if (note.layer === "shared" && (!runtimeDecision.included || block === null)) {
+      policyInputEntries.push(manifestInput(note));
       continue;
     }
+    if (!runtimeDecision.included) continue;
+    if (block === null) {
+      throw new Error(`${note.relativePath}: nota publicável sem bloco brain-runtime.`);
+    }
     contributions.push(runtimeContributionSchema.parse(block));
-    inputEntries.push({
-      path: note.relativePath,
-      id: note.metadata.id,
-      type: note.metadata.type,
-      version: note.metadata.version,
-      sensitivity: note.metadata.sensitivity,
-      origin: note.metadata.source,
-      sha256: sha256(note.rawNormalized)
-    });
+    inputEntries.push(manifestInput(note));
+  }
+
+  for (const workflowRoot of loaded.manifest.workflowRoots) {
+    const workflowDirectory = resolve(loaded.directory, workflowRoot);
+    for (const absolutePath of await listMarkdownFiles(workflowDirectory)) {
+      const relativePath = posixRelative(brainRoot, absolutePath);
+      const note = parseNote(
+        absolutePath,
+        relativePath,
+        await readFile(absolutePath, "utf8"),
+        "agent"
+      );
+      if (note.metadata.agent !== options.agentId) {
+        throw new Error(`${relativePath}: workflow pertence a outro agente.`);
+      }
+      const decision = evaluatePublishability(
+        note.metadata,
+        ["public", "public-business", "internal"],
+        asOf
+      );
+      if (decision.included) policyInputEntries.push(manifestInput(note));
+    }
   }
   if (contributions.length === 0) throw new Error("Nenhuma contribuição publicável encontrada.");
   const knowledge = composeKnowledge(options.agentId, contributions);
@@ -619,14 +752,19 @@ export async function compileBrain(options: CompileBrainOptions): Promise<Compil
   for (const evalRoot of loaded.manifest.evalRoots) {
     for (const absolutePath of await listMarkdownFiles(resolve(loaded.directory, evalRoot))) {
       const relativePath = posixRelative(brainRoot, absolutePath);
-      const note = parseNote(absolutePath, relativePath, await readFile(absolutePath, "utf8"));
+      const note = parseNote(
+        absolutePath,
+        relativePath,
+        await readFile(absolutePath, "utf8"),
+        "agent"
+      );
       if (note.metadata.agent !== options.agentId) {
         throw new Error(`${relativePath}: eval pertence a outro agente.`);
       }
       const decision = evaluatePublishability(
         note.metadata,
         ["public", "public-business", "internal"],
-        options.asOf
+        asOf
       );
       if (!decision.included) continue;
       const block = extractJsonBlock(note.body, "brain-eval");
@@ -638,34 +776,35 @@ export async function compileBrain(options: CompileBrainOptions): Promise<Compil
   const suites: EvalSuite[] = [];
   for (const relativePath of evalFiles) {
     const raw = await readFile(resolve(brainRoot, relativePath), "utf8");
-    const note = parseNote(resolve(brainRoot, relativePath), relativePath, raw);
+    const note = parseNote(resolve(brainRoot, relativePath), relativePath, raw, "agent");
     suites.push(evalSuiteSchema.parse(extractJsonBlock(note.body, "brain-eval")));
   }
   const evalResult = await runCriticalEvals(knowledge, suites);
   const suiteSha256 = sha256(canonicalJson(suites));
   const knowledgeBytes = canonicalJson(knowledge);
   const knowledgeSha256 = sha256(knowledgeBytes);
-  const publicationId = `sha256:${sha256(
-    canonicalJson({
-      compilerVersion: "1.0",
-      agentId: options.agentId,
-      version: releaseVersion,
-      asOf: options.asOf,
-      inputs: inputEntries,
-      knowledgeSha256,
-      suiteSha256
-    })
-  )}`;
+  const publicationId = calculatePublicationId({
+    compilerVersion: "1.0",
+    agentId: options.agentId,
+    version: releaseVersion,
+    asOf,
+    composition,
+    inputs: inputEntries,
+    policyInputs: policyInputEntries,
+    knowledgeSha256,
+    suiteSha256
+  });
   const manifest: ReleaseManifest = releaseManifestSchema.parse({
     schemaVersion: "1.0",
     compilerVersion: "1.0",
     publicationId,
     agentId: options.agentId,
     version: releaseVersion,
-    asOf: options.asOf,
-    publishedAt: `${options.asOf}T00:00:00.000Z`,
-    composition: roots.map(({ layer, id }) => ({ layer, id })),
+    asOf,
+    publishedAt: `${asOf}T00:00:00.000Z`,
+    composition,
     inputs: inputEntries,
+    policyInputs: policyInputEntries,
     output: { file: "business-knowledge.json", sha256: knowledgeSha256 },
     evals: {
       files: evalFiles,
@@ -703,6 +842,12 @@ export async function publishCompiledBrain(
   const agentDirectory = resolve(root, compiled.manifest.agentId);
   const directory = resolve(agentDirectory, compiled.manifest.version);
   if (await fileExists(directory)) {
+    loadPinnedKnowledgeRelease({
+      releasesRoot: root,
+      agentId: compiled.manifest.agentId,
+      version: compiled.manifest.version,
+      expectedManifestSha256: compiled.manifestSha256
+    });
     const existing = await readReleaseBytes(directory);
     if (
       existing.knowledgeBytes !== compiled.knowledgeBytes ||
@@ -714,7 +859,19 @@ export async function publishCompiledBrain(
     return { directory, created: false };
   }
 
+  if (await fileExists(root)) {
+    const rootStats = await lstat(root);
+    if (rootStats.isSymbolicLink() || !rootStats.isDirectory()) {
+      throw new Error(`Raiz de releases inválida: ${root}`);
+    }
+  }
   await mkdir(agentDirectory, { recursive: true });
+  for (const candidate of [root, agentDirectory]) {
+    const directoryStats = await lstat(candidate);
+    if (directoryStats.isSymbolicLink() || !directoryStats.isDirectory()) {
+      throw new Error(`Diretório de releases inválido: ${candidate}`);
+    }
+  }
   const temporary = resolve(agentDirectory, `.tmp-${compiled.manifest.version}-${randomUUID()}`);
   await mkdir(temporary);
   try {
@@ -741,6 +898,20 @@ export async function loadPublishedBrainRelease(
   const manifest = releaseManifestSchema.parse(JSON.parse(bytes.manifestBytes) as unknown);
   if (manifest.agentId !== agentId || manifest.version !== version) {
     throw new Error("Manifesto diverge da release selecionada.");
+  }
+  const expectedPublicationId = calculatePublicationId({
+    compilerVersion: manifest.compilerVersion,
+    agentId: manifest.agentId,
+    version: manifest.version,
+    asOf: manifest.asOf,
+    composition: manifest.composition,
+    inputs: manifest.inputs,
+    policyInputs: manifest.policyInputs,
+    knowledgeSha256: manifest.output.sha256,
+    suiteSha256: manifest.evals.suiteSha256
+  });
+  if (manifest.publicationId !== expectedPublicationId) {
+    throw new Error("publicationId do manifesto é inválido.");
   }
   if (sha256(bytes.manifestBytes) !== bytes.manifestSha256) {
     throw new Error("Checksum do manifesto é inválido.");

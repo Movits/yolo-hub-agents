@@ -2,11 +2,12 @@
 
 MVP configurável de atendimento em português brasileiro. Ele funciona imediatamente em modo determinístico, sem credenciais externas, e pode usar a OpenAI Responses API e a WhatsApp Cloud API quando as chaves forem adicionadas.
 
-> Os dados da “Empresa Modelo” são fictícios. Eles estão centralizados em `config/company.example.json` para serem substituídos quando o contexto real estiver disponível.
+> Os dados da “Empresa Modelo” são fictícios. Em execução hospedada, o runtime usa a release
+> `empresa-modelo@1.0.0` de `config/releases/`, fixada também pelo SHA-256 do manifesto.
 
 ## O que já funciona
 
-- FAQ e apresentação da empresa a partir de JSON configurável;
+- FAQ e apresentação da empresa a partir de uma release de conhecimento versionada e verificada;
 - preços e serviços sem inventar descontos;
 - captura de lead com consentimento e confirmação;
 - solicitação de agendamento sem alegar que o horário foi confirmado;
@@ -30,7 +31,7 @@ flowchart LR
     WH --> SIG["HMAC + normalização + dedupe"]
     SIG --> AG
     AG --> RULES["Regras e fluxos"]
-    AG --> KB["FAQ / configuração da empresa"]
+    AG --> KB["Release fixada de conhecimento"]
     AG -. opcional .-> AI["OpenAI Responses API"]
     AG --> MEM["Sessões e registros em memória"]
     AG --> OUT["Adaptador de saída"]
@@ -66,8 +67,9 @@ pnpm brain:publish --agent empresa-modelo --as-of 2026-07-12 --check
 O validador verifica frontmatter, IDs duplicados, estados editoriais, links Obsidian, manifests e
 padrões óbvios de segredos. O publicador compila somente notas `approved`, vigentes e com
 sensibilidade autorizada em uma release JSON imutável, executa avaliações críticas e registra hashes.
-O runtime ainda usa `config/company.example.json`; a etapa seguinte passará a exigir uma release
-explicitamente selecionada.
+O runtime hospedado exige uma release explicitamente selecionada por agente, versão e SHA-256 do
+manifesto. `config/company.example.json` permanece somente como oracle editorial e fallback de
+desenvolvimento/teste; produção recusa iniciar sem uma release válida.
 
 Para publicar a amostra fictícia:
 
@@ -77,6 +79,16 @@ pnpm brain:publish --agent empresa-modelo --as-of 2026-07-12
 
 O comando não segue links Obsidian como dependências e recusa sobrescrever uma versão com bytes
 diferentes. Incremente `version` no `agent.json` para uma nova publicação.
+
+Depois de publicar, confirme que a brain e a release versionada são idênticas:
+
+```powershell
+pnpm brain:publish --agent empresa-modelo --as-of 2026-07-12 --check
+```
+
+Rollback não altera nem sobrescreve arquivos publicados: fixe novamente uma versão anterior e seu
+`manifest.sha256` nas variáveis `AGENT_RELEASE_VERSION` e `AGENT_RELEASE_MANIFEST_SHA256`, depois
+reinicie ou faça novo deploy do serviço.
 
 ## Segurança do repositório público
 
@@ -111,6 +123,9 @@ Copy-Item .env.example .env
 pnpm install
 pnpm chat
 ```
+
+Sem as variáveis `AGENT_RELEASE_*`, esse fluxo local usa `COMPANY_CONFIG_PATH` como fallback não
+verificado. Esse fallback é permitido somente em `development` e `test`; nunca é aceito em produção.
 
 Converse normalmente no terminal. Comandos úteis:
 
@@ -177,9 +192,11 @@ pertence a esse repositório de deploy, não ao `main` deste projeto.
 
 1. Crie o serviço pelo Blueprint do Render e informe um `SIMULATOR_API_TOKEN` aleatório com pelo
    menos 32 caracteres.
-2. No repositório de deploy, cadastre a URL final do Render na variável `BACKEND_URL`.
-3. Execute o workflow do GitHub Pages no repositório de deploy.
-4. Abra a página, informe o token temporário no diálogo **Backend** e use apenas dados fictícios.
+2. O Blueprint fixa `empresa-modelo@1.0.0`, o diretório `./config/releases` e o SHA-256 esperado do
+   manifesto; o backend recusa iniciar se qualquer byte divergir.
+3. No repositório de deploy, cadastre a URL final do Render na variável `BACKEND_URL`.
+4. Execute o workflow do GitHub Pages no repositório de deploy.
+5. Abra a página, informe o token temporário no diálogo **Backend** e use apenas dados fictícios.
 
 O token nunca é incluído no artefato do Pages: ele permanece somente em `sessionStorage` durante a
 aba atual. A demonstração online usa memória efêmera, não habilita o webhook da Meta e não é um
@@ -188,11 +205,14 @@ período ocioso pode levar cerca de um minuto enquanto o serviço é reativado.
 
 ## Personalizar a empresa
 
-1. Duplique `config/company.example.json` como `config/company.json`.
-2. Troque empresa, serviços, políticas, FAQs e procedimentos de suporte.
-3. Aponte `COMPANY_CONFIG_PATH=./config/company.json` no `.env`.
-4. Mantenha respostas factuais e procedimentos seguros; não coloque segredos no JSON.
-5. Quando houver integrações reais, troque `prototype` para `false` somente depois de conectar CRM, agenda e atendimento humano.
+1. Crie o agente a partir de `brain/agents/_template/` e edite somente conteúdo fictício ou aprovado.
+2. Mova as notas pelo ciclo `draft → in-review → approved` e atualize `version`/`releaseAsOf` no
+   manifesto do agente.
+3. Execute `pnpm brain:validate` e publique com `pnpm brain:publish --agent <agent-id>`.
+4. Confirme a release com `pnpm brain:publish --agent <agent-id> --check`.
+5. Fixe `AGENT_ID`, `AGENT_RELEASE_VERSION`, `AGENT_RELEASE_MANIFEST_SHA256` e
+   `AGENT_RELEASES_ROOT` no ambiente hospedado.
+6. Troque `prototype` para `false` somente depois de conectar CRM, agenda e atendimento humano.
 
 Não é necessário “treinar” um modelo para a primeira versão. Alimentar e revisar a base de conhecimento costuma ser mais rápido, barato e controlável. Fine-tuning pode ser avaliado depois, com conversas reais anonimizadas e um conjunto de testes.
 
@@ -226,6 +246,7 @@ O passo a passo detalhado está em [docs/META_SETUP.md](docs/META_SETUP.md). Em 
 pnpm typecheck
 pnpm test
 pnpm build
+pnpm brain:publish --agent empresa-modelo --as-of 2026-07-12 --check
 ```
 
 Consulte [docs/TESTING.md](docs/TESTING.md) para o roteiro funcional e [docs/PRODUCTION.md](docs/PRODUCTION.md) antes de usar com clientes reais.

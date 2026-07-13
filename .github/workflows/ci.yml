@@ -33,7 +33,7 @@ jobs:
         run: corepack pnpm brain:validate
 
       - name: Compile and evaluate brain
-        run: corepack pnpm brain:publish --agent empresa-modelo --as-of 2026-07-12 --check
+        run: corepack pnpm brain:publish --agent empresa-modelo --check
 
       - name: Typecheck
         run: corepack pnpm typecheck

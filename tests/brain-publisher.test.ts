@@ -1,4 +1,4 @@
-import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -28,6 +28,17 @@ async function copyPublisherFixture(): Promise<string> {
   return directory;
 }
 
+async function rewriteMarkdownTree(directory: string): Promise<void> {
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = resolve(directory, entry.name);
+    if (entry.isDirectory()) await rewriteMarkdownTree(path);
+    else if (entry.isFile() && entry.name.endsWith(".md")) {
+      const contents = await readFile(path, "utf8");
+      await writeFile(path, contents.replace(/\r\n?/g, "\n").normalize("NFD").replaceAll("\n", "\r\n"), "utf8");
+    }
+  }
+}
+
 afterEach(async () => {
   await Promise.all(
     temporaryDirectories.splice(0).map((directory) =>
@@ -54,7 +65,7 @@ describe("brain publisher", () => {
     expect(first.manifestBytes).toBe(second.manifestBytes);
     expect(first.manifestSha256).toBe(second.manifestSha256);
     expect(first.knowledgeBytes).toBe(canonicalJson(currentConfig));
-    expect(first.manifest.evals).toMatchObject({ critical: 11, passed: 11, failed: 0 });
+    expect(first.manifest.evals).toMatchObject({ critical: 12, passed: 12, failed: 0 });
     expect(first.manifest.inputs.map((input) => input.path)).toEqual([
       "agents/empresa-modelo/knowledge/company.md",
       "agents/empresa-modelo/knowledge/faq.md",
@@ -66,6 +77,14 @@ describe("brain publisher", () => {
     expect(first.manifest.inputs.some((input) => /workflows|evals|governance/.test(input.path))).toBe(
       false
     );
+    expect(first.manifest.policyInputs.map((input) => input.path)).toEqual([
+      "shared/glossary.md",
+      "shared/policies/safety-and-handoff.md",
+      "agents/empresa-modelo/workflows/human-handoff.md",
+      "agents/empresa-modelo/workflows/lead.md",
+      "agents/empresa-modelo/workflows/opt-out.md",
+      "agents/empresa-modelo/workflows/scheduling.md"
+    ]);
   });
 
   it("filtra status, vigência e sensibilidade e rejeita conteúdo confidencial", () => {
@@ -110,6 +129,12 @@ describe("brain publisher", () => {
     ).toThrow("não é permitida");
   });
 
+  it("rejeita datas de calendário impossíveis", async () => {
+    await expect(
+      compileBrain({ projectRoot, agentId: "empresa-modelo", asOf: "2026-02-30" })
+    ).rejects.toThrow("--as-of inválida");
+  });
+
   it("publica releases imutáveis e permite selecionar uma versão anterior", async () => {
     const releasesRoot = await temporaryDirectory("brain-releases-");
     const first = await compileBrain({
@@ -146,7 +171,159 @@ describe("brain publisher", () => {
     await expect(
       loadPublishedBrainRelease(releasesRoot, "empresa-modelo", "1.0.0")
     ).rejects.toThrow("Checksum do conhecimento");
-    await expect(publishCompiledBrain(releasesRoot, first)).rejects.toThrow("imutável");
+    await expect(publishCompiledBrain(releasesRoot, first)).rejects.toThrow(
+      "Checksum de business-knowledge.json"
+    );
+  });
+
+  it("gera os mesmos bytes com Markdown CRLF e Unicode NFD", async () => {
+    const fixtureRoot = await copyPublisherFixture();
+    await rewriteMarkdownTree(resolve(fixtureRoot, "brain"));
+    const expected = await compileBrain({
+      projectRoot,
+      agentId: "empresa-modelo",
+      asOf: "2026-07-12"
+    });
+    const converted = await compileBrain({
+      projectRoot: fixtureRoot,
+      agentId: "empresa-modelo",
+      asOf: "2026-07-12"
+    });
+
+    expect(converted.knowledgeBytes).toBe(expected.knowledgeBytes);
+    expect(converted.manifestBytes).toBe(expected.manifestBytes);
+  });
+
+  it("compõe shared, segmento e agente na ordem declarada", async () => {
+    const fixtureRoot = await copyPublisherFixture();
+    const segmentRoot = resolve(fixtureRoot, "brain", "segments", "automotivo");
+    await mkdir(resolve(segmentRoot, "knowledge"), { recursive: true });
+    await writeFile(
+      resolve(segmentRoot, "segment.json"),
+      `${JSON.stringify(
+        {
+          schemaVersion: "1.0",
+          version: "1.0.0",
+          id: "automotivo",
+          status: "prototype",
+          knowledgeRoots: ["knowledge"]
+        },
+        null,
+        2
+      )}\n`,
+      "utf8"
+    );
+    await writeFile(
+      resolve(segmentRoot, "knowledge", "services.md"),
+      `---
+id: automotivo.services.core
+agent: automotivo
+type: services
+status: approved
+owner: tests
+sensitivity: public-business
+version: 1.0.0
+effective_from: 2026-07-12
+expires_at: null
+source: config/company.example.json
+---
+
+# Serviço do segmento
+
+\`\`\`json brain-runtime
+{
+  "schemaVersion": "1.0",
+  "kind": "services",
+  "value": [
+    {
+      "id": "segment-service",
+      "name": "Serviço do segmento",
+      "description": "Serviço adicionado antes da camada do agente.",
+      "price": "sob consulta"
+    }
+  ]
+}
+\`\`\`
+`,
+      "utf8"
+    );
+    const agentManifestPath = resolve(
+      fixtureRoot,
+      "brain",
+      "agents",
+      "empresa-modelo",
+      "agent.json"
+    );
+    const agentManifest = JSON.parse(await readFile(agentManifestPath, "utf8")) as {
+      extends: string[];
+    };
+    agentManifest.extends = ["shared", "automotivo"];
+    await writeFile(agentManifestPath, `${JSON.stringify(agentManifest, null, 2)}\n`, "utf8");
+    const configPath = resolve(fixtureRoot, "config", "company.example.json");
+    const config = JSON.parse(await readFile(configPath, "utf8")) as {
+      services: Array<Record<string, unknown>>;
+    };
+    config.services.unshift({
+      id: "segment-service",
+      name: "Serviço do segmento",
+      description: "Serviço adicionado antes da camada do agente.",
+      price: "sob consulta"
+    });
+    await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+
+    const compiled = await compileBrain({
+      projectRoot: fixtureRoot,
+      agentId: "empresa-modelo",
+      asOf: "2026-07-12"
+    });
+    expect(compiled.manifest.composition).toEqual([
+      { layer: "shared", id: "shared" },
+      { layer: "segment", id: "automotivo" },
+      { layer: "agent", id: "empresa-modelo" }
+    ]);
+    expect(compiled.knowledge.services[0]?.id).toBe("segment-service");
+    expect(compiled.manifest.inputs[0]?.path).toBe("segments/automotivo/knowledge/services.md");
+  });
+
+  it("rejeita root que tenta sair do diretório do agente", async () => {
+    const fixtureRoot = await copyPublisherFixture();
+    const manifestPath = resolve(
+      fixtureRoot,
+      "brain",
+      "agents",
+      "empresa-modelo",
+      "agent.json"
+    );
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
+      knowledgeRoots: string[];
+    };
+    manifest.knowledgeRoots = ["../../../config"];
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+
+    await expect(
+      compileBrain({ projectRoot: fixtureRoot, agentId: "empresa-modelo", asOf: "2026-07-12" })
+    ).rejects.toThrow();
+  });
+
+  it("exige todas as categorias críticas de avaliação", async () => {
+    const fixtureRoot = await copyPublisherFixture();
+    const evalPath = resolve(
+      fixtureRoot,
+      "brain",
+      "agents",
+      "empresa-modelo",
+      "evals",
+      "golden-cases.md"
+    );
+    const contents = (await readFile(evalPath, "utf8")).replace(
+      '"category": "redaction"',
+      '"category": "grounding"'
+    );
+    await writeFile(evalPath, contents, "utf8");
+
+    await expect(
+      compileBrain({ projectRoot: fixtureRoot, agentId: "empresa-modelo", asOf: "2026-07-12" })
+    ).rejects.toThrow("Cobertura crítica ausente: redaction");
   });
 
   it("falha quando o runtimeConfig pertence a outro agente", async () => {

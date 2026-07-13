@@ -1,13 +1,15 @@
+import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import {
   compileBrain,
   defaultReleasesRoot,
   publishCompiledBrain
 } from "./publisher.js";
+import { loadPinnedKnowledgeRelease } from "../config/release.js";
 
 interface CliOptions {
   agentId: string;
-  asOf: string;
+  asOf?: string;
   releasesRoot: string;
   checkOnly: boolean;
   versionOverride?: string;
@@ -22,7 +24,7 @@ function takeValue(args: string[], index: number, name: string): string {
 function parseArgs(args: string[]): CliOptions {
   const projectRoot = process.cwd();
   let agentId = "";
-  let asOf = new Date().toISOString().slice(0, 10);
+  let asOf: string | undefined;
   let releasesRoot = defaultReleasesRoot(projectRoot);
   let checkOnly = false;
   let versionOverride: string | undefined;
@@ -50,25 +52,35 @@ function parseArgs(args: string[]): CliOptions {
   if (!agentId) throw new Error("Informe --agent <agent-id>.");
   return {
     agentId,
-    asOf,
     releasesRoot,
     checkOnly,
+    ...(asOf ? { asOf } : {}),
     ...(versionOverride ? { versionOverride } : {})
   };
 }
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
+  execFileSync(process.execPath, [resolve("scripts", "validate-brain.mjs")], {
+    cwd: process.cwd(),
+    stdio: "inherit"
+  });
   const compiled = await compileBrain({
     projectRoot: process.cwd(),
     agentId: options.agentId,
-    asOf: options.asOf,
+    ...(options.asOf ? { asOf: options.asOf } : {}),
     ...(options.versionOverride ? { versionOverride: options.versionOverride } : {})
   });
 
   if (options.checkOnly) {
+    loadPinnedKnowledgeRelease({
+      releasesRoot: options.releasesRoot,
+      agentId: compiled.manifest.agentId,
+      version: compiled.manifest.version,
+      expectedManifestSha256: compiled.manifestSha256
+    });
     process.stdout.write(
-      `Brain compilada e avaliada: ${compiled.manifest.agentId}@${compiled.manifest.version}, ` +
+      `Brain e release verificadas: ${compiled.manifest.agentId}@${compiled.manifest.version}, ` +
         `${compiled.manifest.evals.passed} avaliação(ões) crítica(s).\n`
     );
     return;

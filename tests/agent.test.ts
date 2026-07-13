@@ -3,11 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BusinessAgent } from "../src/application/agent.js";
 import type { LlmResponder } from "../src/application/ports.js";
 import { loadCompanyConfig } from "../src/config/company.js";
+import { createDevelopmentRelease } from "../src/config/release.js";
 import type { IncomingMessage } from "../src/domain/types.js";
 import { DEFAULT_TENANT_CONTEXT, type TenantContext } from "../src/domain/tenant.js";
 import { MemoryStore } from "../src/infrastructure/memory-store.js";
 
 const knowledge = loadCompanyConfig(resolve("config/company.example.json"));
+const release = createDevelopmentRelease(knowledge);
 const tenant = DEFAULT_TENANT_CONTEXT;
 
 describe("BusinessAgent", () => {
@@ -17,7 +19,7 @@ describe("BusinessAgent", () => {
 
   beforeEach(() => {
     store = new MemoryStore();
-    agent = new BusinessAgent(tenant, knowledge, store);
+    agent = new BusinessAgent(tenant, release, store);
     counter = 0;
   });
 
@@ -39,6 +41,7 @@ describe("BusinessAgent", () => {
     const naturalGreeting = await send("Olá, tudo bem?", "greeting-user");
 
     expect(result.intent).toBe("greeting");
+    expect(result).toMatchObject({ agentId: "empresa-modelo", releaseVersion: "dev-fallback" });
     expect(result.reply).toContain("assistente virtual");
     expect(result.reply).toContain("1. Conhecer serviços");
     expect(naturalGreeting.intent).toBe("greeting");
@@ -154,6 +157,7 @@ describe("BusinessAgent", () => {
     expect(first.reply).toContain("internet");
     expect(second.reply).toContain("Feche o sistema");
     expect(result.handoff).toBe(true);
+    expect(result.releaseVersion).toBe("dev-fallback");
     expect(result.protocol).toMatch(/^ATD-/);
     expect(result.state.status).toBe("human_handoff");
   });
@@ -188,6 +192,7 @@ describe("BusinessAgent", () => {
 
     expect(stopped.state.status).toBe("opted_out");
     expect(silence.suppressed).toBe(true);
+    expect(silence.releaseVersion).toBe("dev-fallback");
     expect(silence.reply).toBeNull();
     expect(optIn.state.flow).toBe("opt_in_confirm");
     expect(active.state.status).toBe("active");
@@ -208,6 +213,7 @@ describe("BusinessAgent", () => {
 
     expect(first.duplicate).toBe(false);
     expect(duplicate.duplicate).toBe(true);
+    expect(duplicate.releaseVersion).toBe("dev-fallback");
     expect(duplicate.reply).toBe(first.reply);
   });
 
@@ -215,8 +221,8 @@ describe("BusinessAgent", () => {
     const sharedStore = new MemoryStore();
     const tenantA: TenantContext = { tenantId: "tenant-a", agentId: knowledge.agentId };
     const tenantB: TenantContext = { tenantId: "tenant-b", agentId: knowledge.agentId };
-    const agentA = new BusinessAgent(tenantA, knowledge, sharedStore);
-    const agentB = new BusinessAgent(tenantB, knowledge, sharedStore);
+    const agentA = new BusinessAgent(tenantA, release, sharedStore);
+    const agentB = new BusinessAgent(tenantB, release, sharedStore);
     const baseMessage: Omit<IncomingMessage, "text"> = {
       id: "shared-message-id",
       userId: "shared-user",
@@ -245,8 +251,8 @@ describe("BusinessAgent", () => {
     const sharedStore = new MemoryStore();
     const tenantA: TenantContext = { tenantId: "tenant-a", agentId: knowledge.agentId };
     const tenantB: TenantContext = { tenantId: "tenant-b", agentId: knowledge.agentId };
-    const agentA = new BusinessAgent(tenantA, knowledge, sharedStore);
-    const agentB = new BusinessAgent(tenantB, knowledge, sharedStore);
+    const agentA = new BusinessAgent(tenantA, release, sharedStore);
+    const agentB = new BusinessAgent(tenantB, release, sharedStore);
     let sequenceA = 0;
     let sequenceB = 0;
     const sendFor = async (target: BusinessAgent, tenantId: "a" | "b", text: string) => {
@@ -294,7 +300,7 @@ describe("BusinessAgent", () => {
       () =>
         new BusinessAgent(
           { tenantId: "tenant-a", agentId: "outro-agente" },
-          knowledge,
+          release,
           new MemoryStore()
         )
     ).toThrow("TenantContext.agentId");
@@ -370,7 +376,7 @@ describe("BusinessAgent", () => {
         reason: "pedido de saída"
       })
     };
-    agent = new BusinessAgent(tenant, knowledge, store, llm);
+    agent = new BusinessAgent(tenant, release, store, llm);
 
     const result = await send("Não quero continuar com isso");
     expect(result.state.status).toBe("opted_out");
@@ -400,7 +406,7 @@ describe("BusinessAgent", () => {
         };
       }
     };
-    agent = new BusinessAgent(tenant, knowledge, store, llm);
+    agent = new BusinessAgent(tenant, release, store, llm);
 
     await send("xpto alfa");
     await send("xpto beta");
@@ -413,22 +419,24 @@ describe("BusinessAgent", () => {
   });
 
   it("serializa mensagens por contato e não deixa uma resposta antiga reativar a sessão", async () => {
-    let release: ((decision: Awaited<ReturnType<LlmResponder["decide"]>>) => void) | undefined;
+    let releaseDecision:
+      | ((decision: Awaited<ReturnType<LlmResponder["decide"]>>) => void)
+      | undefined;
     let called = false;
     const deferredLlm: LlmResponder = {
       decide: () => {
         called = true;
         return new Promise((resolve) => {
-          release = resolve;
+          releaseDecision = resolve;
         });
       }
     };
-    agent = new BusinessAgent(tenant, knowledge, store, deferredLlm);
+    agent = new BusinessAgent(tenant, release, store, deferredLlm);
 
     const oldReply = send("Uma pergunta fora das regras conhecidas");
     await vi.waitFor(() => expect(called).toBe(true));
     const stopReply = send("STOP");
-    release?.({
+    releaseDecision?.({
       intent: "faq",
       reply: "Resposta que ficou aguardando",
       confidence: 0.9,

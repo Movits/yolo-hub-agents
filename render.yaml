@@ -13,8 +13,14 @@ services:
         value: 0.0.0.0
       - key: LOG_LEVEL
         value: info
-      - key: COMPANY_CONFIG_PATH
-        value: ./config/company.example.json
+      - key: AGENT_ID
+        value: empresa-modelo
+      - key: AGENT_RELEASE_VERSION
+        value: "1.0.0"
+      - key: AGENT_RELEASE_MANIFEST_SHA256
+        value: 88ac89ba12849303d140fc9a667de1d5d7a21d511253d3a345d953ddc275abd0
+      - key: AGENT_RELEASES_ROOT
+        value: ./config/releases
       - key: DEMO_HOSTED
         value: "true"
       - key: ENABLE_SIMULATOR

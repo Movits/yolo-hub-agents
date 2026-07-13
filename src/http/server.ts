@@ -78,6 +78,10 @@ export function buildServer(options: RuntimeOptions = {}): FastifyInstance {
     throw new Error("WEBHOOK_PROCESSING_MODE=async exige uma fila durável e não é permitido neste MVP em produção.");
   }
 
+  if (productionWhatsApp && knowledge.prototype) {
+    throw new Error("WhatsApp em produção não permite uma release marcada como prototype.");
+  }
+
   const app = Fastify({
     trustProxy: env.TRUST_PROXY,
     logger:
@@ -229,6 +233,8 @@ export function buildServer(options: RuntimeOptions = {}): FastifyInstance {
           service: "whatsapp-business-agent",
           mode: knowledge.prototype ? "prototype" : "configured",
           company: knowledge.company.name,
+          agentId: runtime.release.identity.agentId,
+          releaseVersion: runtime.release.identity.version,
           openai: runtime.llm ? "configured" : "deterministic",
           whatsappSending: messenger.enabled,
           storage: "memory"
@@ -383,7 +389,9 @@ export function buildServer(options: RuntimeOptions = {}): FastifyInstance {
               {
                 inboundMessageId: message.id,
                 outboundMessageId: sent.providerMessageId,
-                intent: result.intent
+                intent: result.intent,
+                agentId: result.agentId,
+                releaseVersion: result.releaseVersion
               },
               "Resposta enviada ao WhatsApp"
             );
