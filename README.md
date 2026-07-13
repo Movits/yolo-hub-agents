@@ -2,11 +2,12 @@
 
 MVP configurável de atendimento em português brasileiro. Ele funciona imediatamente em modo determinístico, sem credenciais externas, e pode usar a OpenAI Responses API e a WhatsApp Cloud API quando as chaves forem adicionadas.
 
-> Os dados da “Empresa Modelo” são fictícios. Eles estão centralizados em `config/company.example.json` para serem substituídos quando o contexto real estiver disponível.
+> Os dados da “Empresa Modelo” são fictícios. Em execução hospedada, o runtime usa a release
+> `empresa-modelo@1.0.0` de `config/releases/`, fixada também pelo SHA-256 do manifesto.
 
 ## O que já funciona
 
-- FAQ e apresentação da empresa a partir de JSON configurável;
+- FAQ e apresentação da empresa a partir de uma release de conhecimento versionada e verificada;
 - preços e serviços sem inventar descontos;
 - captura de lead com consentimento e confirmação;
 - solicitação de agendamento sem alegar que o horário foi confirmado;
@@ -18,7 +19,10 @@ MVP configurável de atendimento em português brasileiro. Ele funciona imediata
 - simulador no terminal, por HTTP e em uma interface publicável no GitHub Pages;
 - webhook da Meta com challenge, assinatura HMAC do corpo bruto, lote, status e deduplicação;
 - fila por contato, cache de resposta e retry síncrono sem repetir o raciocínio do agente;
-- envio opcional pela Graph API;
+- adaptador da Graph API disponível para testes, com envio de produção bloqueado até existir outbox;
+- SQLite durável com retomada de claims e commits atômicos;
+- registro e autorização por tenant, com binding exato WABA + número;
+- verificação opcional Ed25519 e bloqueio obrigatório no WhatsApp de produção;
 - testes unitários e de integração.
 
 ## Arquitetura
@@ -30,9 +34,9 @@ flowchart LR
     WH --> SIG["HMAC + normalização + dedupe"]
     SIG --> AG
     AG --> RULES["Regras e fluxos"]
-    AG --> KB["FAQ / configuração da empresa"]
+    AG --> KB["Release fixada de conhecimento"]
     AG -. opcional .-> AI["OpenAI Responses API"]
-    AG --> MEM["Sessões e registros em memória"]
+    AG --> MEM["Memória da demo ou SQLite durável"]
     AG --> OUT["Adaptador de saída"]
     OUT -. quando habilitado .-> WA
 ```
@@ -46,7 +50,8 @@ src/
 ├── config/            # validação de ambiente e base empresarial
 ├── domain/            # tipos e contratos de dados
 ├── http/              # rotas, raw body, HMAC e coordenação de envio
-└── infrastructure/    # armazenamento/outbox em memória do MVP
+├── infrastructure/    # memória e SQLite tenant-aware
+└── tenancy/           # registro, autorização e bindings por tenant
 ```
 
 ## Brain e Obsidian
@@ -60,12 +65,34 @@ Abra `brain/` como vault no Obsidian e comece por `brain/HOME.md`. Antes de publ
 
 ```powershell
 pnpm brain:validate
+pnpm brain:publish --agent empresa-modelo --as-of 2026-07-12 --check
 ```
 
 O validador verifica frontmatter, IDs duplicados, estados editoriais, links Obsidian, manifests e
-padrões óbvios de segredos. Por enquanto a brain é uma camada editorial: o runtime continua usando
-`config/company.example.json`. A futura etapa de ingestão usará somente notas `approved`, com índice
-versionado e rollback.
+padrões óbvios de segredos. O publicador compila somente notas `approved`, vigentes e com
+sensibilidade autorizada em uma release JSON imutável, executa avaliações críticas e registra hashes.
+O runtime hospedado exige uma release explicitamente selecionada por agente, versão e SHA-256 do
+manifesto. `config/company.example.json` permanece somente como oracle editorial e fallback de
+desenvolvimento/teste; produção recusa iniciar sem uma release válida.
+
+Para publicar a amostra fictícia:
+
+```powershell
+pnpm brain:publish --agent empresa-modelo --as-of 2026-07-12
+```
+
+O comando não segue links Obsidian como dependências e recusa sobrescrever uma versão com bytes
+diferentes. Incremente `version` no `agent.json` para uma nova publicação.
+
+Depois de publicar, confirme que a brain e a release versionada são idênticas:
+
+```powershell
+pnpm brain:publish --agent empresa-modelo --as-of 2026-07-12 --check
+```
+
+Rollback não altera nem sobrescreve arquivos publicados: fixe novamente uma versão anterior e seu
+`manifest.sha256` nas variáveis `AGENT_RELEASE_VERSION` e `AGENT_RELEASE_MANIFEST_SHA256`, depois
+reinicie ou faça novo deploy do serviço.
 
 ## Segurança do repositório público
 
@@ -77,6 +104,8 @@ Antes de cada push, execute:
 
 ```powershell
 pnpm secrets:check
+pnpm public-data:check
+pnpm verify:deploy
 ```
 
 O comando verifica arquivos rastreados e o histórico Git por formatos conhecidos de credenciais. Ele
@@ -85,7 +114,7 @@ arquivo seja removido depois. Veja também [SECURITY.md](SECURITY.md).
 
 ## Início rápido
 
-Pré-requisito: Node.js 22 ou mais recente e pnpm.
+Pré-requisito: Node.js 24.14 ou mais recente, dentro da linha 24, e pnpm.
 
 ### Windows: abrir a interface com dois cliques
 
@@ -100,6 +129,9 @@ Copy-Item .env.example .env
 pnpm install
 pnpm chat
 ```
+
+Sem as variáveis `AGENT_RELEASE_*`, esse fluxo local usa `COMPANY_CONFIG_PATH` como fallback não
+verificado. Esse fallback é permitido somente em `development` e `test`; nunca é aceito em produção.
 
 Converse normalmente no terminal. Comandos úteis:
 
@@ -156,17 +188,39 @@ isolado `DEMO_HOSTED=true` publica somente `/health` e `/api/simulate*`, exige t
 CORS e aplica rate limit; nesse modo a interface local, o debug e os webhooks do WhatsApp ficam
 desabilitados.
 
+## Persistência e registro de tenants
+
+A demo continua em memória. Para persistência local ou em um servidor com disco persistente:
+
+```env
+STORAGE_DRIVER=sqlite
+SQLITE_PATH=./data/yolo-hub.sqlite
+```
+
+O SQLite usa WAL, `synchronous=FULL`, claims com lease, deduplicação com TTL e commit atômico de
+sessão + resultado. Leads, agendas e tickets usam IDs determinísticos por mensagem para que uma
+retomada não crie protocolos duplicados. WhatsApp de produção falha fechado se o store for efêmero.
+
+O registro opcional [tenants.example.json](config/tenants.example.json) fixa tenant, agente, release,
+principal do simulador e binding WABA + número sem armazenar tokens. Os tokens ficam em
+`SIMULATOR_TENANT_TOKENS`, e as rotas `/api/tenants/:tenantId/*` recusam um token de outro tenant.
+Webhooks são roteados somente pelo binding exato após a assinatura HMAC ser validada.
+
 ## Demo online: GitHub Pages + Render
 
-O frontend estático fica no GitHub Pages e o backend Fastify fica em um Web Service do Render. O
-arquivo `render.yaml` descreve o serviço de demonstração; o workflow `.github/workflows/pages.yml`
-publica somente a pasta `public/`.
+O frontend estático fica no GitHub Pages e o backend Fastify fica em um Web Service do Render. Este
+repositório mantém o código-fonte canônico em `public/` e o `render.yaml` do backend. A publicação do
+Pages é feita pelo repositório separado
+[`Movits/yolo-hub-agents-demo`](https://github.com/Movits/yolo-hub-agents-demo); o workflow de Pages
+pertence a esse repositório de deploy, não ao `main` deste projeto.
 
 1. Crie o serviço pelo Blueprint do Render e informe um `SIMULATOR_API_TOKEN` aleatório com pelo
    menos 32 caracteres.
-2. Cadastre a URL final do Render na variável de repositório `BACKEND_URL`.
-3. Ative GitHub Pages com origem **GitHub Actions** e execute o workflow.
-4. Abra a página, informe o token temporário no diálogo **Backend** e use apenas dados fictícios.
+2. Cadastre `AGENT_RELEASE_MANIFEST_SHA256` como variável protegida no Render. O valor não fica mais
+   ancorado no mesmo arquivo que a release; o backend recusa iniciar se qualquer byte divergir.
+3. No repositório de deploy, cadastre a URL final do Render na variável `BACKEND_URL`.
+4. Execute o workflow do GitHub Pages no repositório de deploy.
+5. Abra a página, informe o token temporário no diálogo **Backend** e use apenas dados fictícios.
 
 O token nunca é incluído no artefato do Pages: ele permanece somente em `sessionStorage` durante a
 aba atual. A demonstração online usa memória efêmera, não habilita o webhook da Meta e não é um
@@ -175,11 +229,14 @@ período ocioso pode levar cerca de um minuto enquanto o serviço é reativado.
 
 ## Personalizar a empresa
 
-1. Duplique `config/company.example.json` como `config/company.json`.
-2. Troque empresa, serviços, políticas, FAQs e procedimentos de suporte.
-3. Aponte `COMPANY_CONFIG_PATH=./config/company.json` no `.env`.
-4. Mantenha respostas factuais e procedimentos seguros; não coloque segredos no JSON.
-5. Quando houver integrações reais, troque `prototype` para `false` somente depois de conectar CRM, agenda e atendimento humano.
+1. Crie o agente a partir de `brain/agents/_template/` e edite somente conteúdo fictício ou aprovado.
+2. Mova as notas pelo ciclo `draft → in-review → approved` e atualize `version`/`releaseAsOf` no
+   manifesto do agente.
+3. Execute `pnpm brain:validate` e publique com `pnpm brain:publish --agent <agent-id>`.
+4. Confirme a release com `pnpm brain:publish --agent <agent-id> --check`.
+5. Fixe `AGENT_ID`, `AGENT_RELEASE_VERSION`, `AGENT_RELEASE_MANIFEST_SHA256` e
+   `AGENT_RELEASES_ROOT` no ambiente hospedado.
+6. Troque `prototype` para `false` somente depois de conectar CRM, agenda e atendimento humano.
 
 Não é necessário “treinar” um modelo para a primeira versão. Alimentar e revisar a base de conhecimento costuma ser mais rápido, barato e controlável. Fine-tuning pode ser avaliado depois, com conversas reais anonimizadas e um conjunto de testes.
 
@@ -205,7 +262,8 @@ O passo a passo detalhado está em [docs/META_SETUP.md](docs/META_SETUP.md). Em 
 3. Exponha este servidor em HTTPS público.
 4. Cadastre `https://SEU_DOMINIO/webhooks/whatsapp` como callback.
 5. Preencha as variáveis `META_*` e `WHATSAPP_*`.
-6. Ative `WHATSAPP_SEND_ENABLED=true` e `REQUIRE_WEBHOOK_SIGNATURE=true`.
+6. Mantenha `WHATSAPP_SEND_ENABLED=false` nesta fase e use mensageiro falso nos testes. Produção só
+   poderá enviar depois da implementação de outbox durável e reconciliação de resultado ambíguo.
 
 ## Verificação
 
@@ -213,18 +271,19 @@ O passo a passo detalhado está em [docs/META_SETUP.md](docs/META_SETUP.md). Em 
 pnpm typecheck
 pnpm test
 pnpm build
+pnpm verify:deploy
 ```
 
 Consulte [docs/TESTING.md](docs/TESTING.md) para o roteiro funcional e [docs/PRODUCTION.md](docs/PRODUCTION.md) antes de usar com clientes reais.
 
 ## Limites deliberados deste MVP
 
-- sessões e registros somem ao reiniciar;
+- a demo gratuita continua efêmera; SQLite só é durável quando o host oferece disco persistente;
 - não há CRM, calendário, help desk ou atendente conectados;
 - o modo assíncrono usa apenas a memória do processo, não uma fila durável;
 - mídia não é transcrita ou analisada;
 - templates fora da janela de 24 horas não são enviados;
-- não há painel administrativo nem métricas de produção; a demo hospedada usa apenas token Bearer e
-  rate limit básico, não autenticação individual de usuários.
+- não há painel administrativo nem métricas de produção; a demo hospedada usa um token Bearer único,
+  enquanto o modo multi-tenant usa tokens vinculados a cada tenant.
 
 Esses limites estão explícitos nas mensagens do modo `prototype`, evitando que um teste pareça uma ação real.

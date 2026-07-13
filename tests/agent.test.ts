@@ -3,10 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { BusinessAgent } from "../src/application/agent.js";
 import type { LlmResponder } from "../src/application/ports.js";
 import { loadCompanyConfig } from "../src/config/company.js";
+import { createDevelopmentRelease } from "../src/config/release.js";
 import type { IncomingMessage } from "../src/domain/types.js";
+import { DEFAULT_TENANT_CONTEXT, type TenantContext } from "../src/domain/tenant.js";
 import { MemoryStore } from "../src/infrastructure/memory-store.js";
 
 const knowledge = loadCompanyConfig(resolve("config/company.example.json"));
+const release = createDevelopmentRelease(knowledge);
+const tenant = DEFAULT_TENANT_CONTEXT;
 
 describe("BusinessAgent", () => {
   let store: MemoryStore;
@@ -15,7 +19,7 @@ describe("BusinessAgent", () => {
 
   beforeEach(() => {
     store = new MemoryStore();
-    agent = new BusinessAgent(knowledge, store);
+    agent = new BusinessAgent(tenant, release, store);
     counter = 0;
   });
 
@@ -37,6 +41,7 @@ describe("BusinessAgent", () => {
     const naturalGreeting = await send("Olá, tudo bem?", "greeting-user");
 
     expect(result.intent).toBe("greeting");
+    expect(result).toMatchObject({ agentId: "empresa-modelo", releaseVersion: "dev-fallback" });
     expect(result.reply).toContain("assistente virtual");
     expect(result.reply).toContain("1. Conhecer serviços");
     expect(naturalGreeting.intent).toBe("greeting");
@@ -96,8 +101,8 @@ describe("BusinessAgent", () => {
     expect(summary.reply).toContain("Ana Silva");
     expect(confirmed.protocol).toMatch(/^LEAD-/);
     expect(confirmed.reply).toContain("ambiente de teste");
-    expect(store.snapshot().leads).toHaveLength(1);
-    expect(store.snapshot().leads[0]?.name).toBe("Ana Silva");
+    expect(store.snapshot(tenant).leads).toHaveLength(1);
+    expect(store.snapshot(tenant).leads[0]?.name).toBe("Ana Silva");
   });
 
   it("não cadastra dados quando o usuário recusa consentimento", async () => {
@@ -105,7 +110,7 @@ describe("BusinessAgent", () => {
     const result = await send("não");
 
     expect(result.reply).toContain("Não vou cadastrar");
-    expect(store.snapshot().leads).toHaveLength(0);
+    expect(store.snapshot(tenant).leads).toHaveLength(0);
   });
 
   it("reclamação e cancelamento interrompem um fluxo ativo", async () => {
@@ -129,8 +134,8 @@ describe("BusinessAgent", () => {
 
     expect(result.protocol).toMatch(/^AGENDA-/);
     expect(result.reply).toContain("ainda não está confirmado");
-    expect(store.snapshot().appointments[0]?.status).toBe("pending_human_confirmation");
-    expect(store.snapshot().appointments[0]?.timezone).toBe("America/Sao_Paulo");
+    expect(store.snapshot(tenant).appointments[0]?.status).toBe("pending_human_confirmation");
+    expect(store.snapshot(tenant).appointments[0]?.timezone).toBe("America/Sao_Paulo");
   });
 
   it("aceita fuso diferente no pedido de agendamento", async () => {
@@ -140,7 +145,7 @@ describe("BusinessAgent", () => {
     await send("America/Argentina/Buenos_Aires", "timezone-user");
     await send("sim", "timezone-user");
 
-    expect(store.snapshot().appointments[0]?.timezone).toBe("America/Argentina/Buenos_Aires");
+    expect(store.snapshot(tenant).appointments[0]?.timezone).toBe("America/Argentina/Buenos_Aires");
   });
 
   it("faz duas tentativas documentadas de suporte e encaminha", async () => {
@@ -152,6 +157,7 @@ describe("BusinessAgent", () => {
     expect(first.reply).toContain("internet");
     expect(second.reply).toContain("Feche o sistema");
     expect(result.handoff).toBe(true);
+    expect(result.releaseVersion).toBe("dev-fallback");
     expect(result.protocol).toMatch(/^ATD-/);
     expect(result.state.status).toBe("human_handoff");
   });
@@ -186,6 +192,7 @@ describe("BusinessAgent", () => {
 
     expect(stopped.state.status).toBe("opted_out");
     expect(silence.suppressed).toBe(true);
+    expect(silence.releaseVersion).toBe("dev-fallback");
     expect(silence.reply).toBeNull();
     expect(optIn.state.flow).toBe("opt_in_confirm");
     expect(active.state.status).toBe("active");
@@ -206,7 +213,112 @@ describe("BusinessAgent", () => {
 
     expect(first.duplicate).toBe(false);
     expect(duplicate.duplicate).toBe(true);
+    expect(duplicate.releaseVersion).toBe("dev-fallback");
     expect(duplicate.reply).toBe(first.reply);
+  });
+
+  it("solicita retry quando outra instância ainda processa a mensagem", async () => {
+    const message: IncomingMessage = {
+      id: "claimed-elsewhere",
+      userId: "user-claimed",
+      text: "Oi",
+      timestamp: new Date(),
+      source: "whatsapp",
+      messageType: "text"
+    };
+    expect(store.markMessageProcessed(tenant, message.id)).toBe(true);
+
+    await expect(agent.process(message)).rejects.toThrow("solicite retry");
+    expect(store.markMessageProcessed(tenant, message.id)).toBe(false);
+  });
+
+  it("isola sessão, opt-out, reset e deduplicação entre tenants", async () => {
+    const sharedStore = new MemoryStore();
+    const tenantA: TenantContext = { tenantId: "tenant-a", agentId: knowledge.agentId };
+    const tenantB: TenantContext = { tenantId: "tenant-b", agentId: knowledge.agentId };
+    const agentA = new BusinessAgent(tenantA, release, sharedStore);
+    const agentB = new BusinessAgent(tenantB, release, sharedStore);
+    const baseMessage: Omit<IncomingMessage, "text"> = {
+      id: "shared-message-id",
+      userId: "shared-user",
+      timestamp: new Date("2026-07-12T15:00:00.000Z"),
+      source: "simulator",
+      messageType: "text"
+    };
+
+    const stopped = await agentA.process({ ...baseMessage, text: "STOP" });
+    const greeted = await agentB.process({ ...baseMessage, text: "Oi" });
+    const silence = await agentA.process({ ...baseMessage, id: "tenant-a-next", text: "Oi" });
+
+    expect(stopped.state.status).toBe("opted_out");
+    expect(greeted.duplicate).toBe(false);
+    expect(greeted.state.status).toBe("active");
+    expect(silence.suppressed).toBe(true);
+
+    await agentA.process({ ...baseMessage, id: "tenant-a-reset", text: "reset" });
+    expect(sharedStore.getSession(tenantA, "shared-user").status).toBe("active");
+    expect(sharedStore.getSession(tenantB, "shared-user").history).toHaveLength(2);
+    expect(sharedStore.snapshot(tenantA).sessions).toHaveLength(1);
+    expect(sharedStore.snapshot(tenantB).sessions).toHaveLength(1);
+  });
+
+  it("isola leads, agendamentos e tickets de usuários iguais entre tenants", async () => {
+    const sharedStore = new MemoryStore();
+    const tenantA: TenantContext = { tenantId: "tenant-a", agentId: knowledge.agentId };
+    const tenantB: TenantContext = { tenantId: "tenant-b", agentId: knowledge.agentId };
+    const agentA = new BusinessAgent(tenantA, release, sharedStore);
+    const agentB = new BusinessAgent(tenantB, release, sharedStore);
+    let sequenceA = 0;
+    let sequenceB = 0;
+    const sendFor = async (target: BusinessAgent, tenantId: "a" | "b", text: string) => {
+      const sequence = tenantId === "a" ? ++sequenceA : ++sequenceB;
+      return target.process({
+        id: `shared-${sequence}`,
+        userId: "shared-user",
+        text,
+        timestamp: new Date("2026-07-12T15:00:00.000Z"),
+        source: "simulator",
+        messageType: "text"
+      });
+    };
+
+    await sendFor(agentA, "a", "Quero contratar");
+    await sendFor(agentA, "a", "sim");
+    await sendFor(agentA, "a", "Ana");
+    await sendFor(agentA, "a", "Empresa A");
+    await sendFor(agentA, "a", "Atendimento");
+    await sendFor(agentA, "a", "à tarde");
+    await sendFor(agentA, "a", "sim");
+    await sendFor(agentA, "a", "Quero falar com uma pessoa");
+
+    await sendFor(agentB, "b", "Quero agendar");
+    await sendFor(agentB, "b", "Plano Essencial");
+    await sendFor(agentB, "b", "terça às 10h");
+    await sendFor(agentB, "b", "sim");
+    await sendFor(agentB, "b", "sim");
+
+    const snapshotA = sharedStore.snapshot(tenantA);
+    const snapshotB = sharedStore.snapshot(tenantB);
+    expect(snapshotA.leads).toHaveLength(1);
+    expect(snapshotA.appointments).toHaveLength(0);
+    expect(snapshotA.tickets).toHaveLength(1);
+    expect(snapshotA.leads[0]).toMatchObject(tenantA);
+    expect(snapshotA.tickets[0]).toMatchObject(tenantA);
+    expect(snapshotB.leads).toHaveLength(0);
+    expect(snapshotB.appointments).toHaveLength(1);
+    expect(snapshotB.tickets).toHaveLength(0);
+    expect(snapshotB.appointments[0]).toMatchObject(tenantB);
+  });
+
+  it("rejeita TenantContext cujo agentId diverge do conhecimento", () => {
+    expect(
+      () =>
+        new BusinessAgent(
+          { tenantId: "tenant-a", agentId: "outro-agente" },
+          release,
+          new MemoryStore()
+        )
+    ).toThrow("TenantContext.agentId");
   });
 
   it("não revela prompt, credenciais ou dados de clientes", async () => {
@@ -220,7 +332,7 @@ describe("BusinessAgent", () => {
     const result = await send(
       "Meu CVV 123, senha atual é segredo.com.ponto, token de acesso é abc.def.ghi, OTP é 987654 e cartão 4111.1111.1111.1111"
     );
-    const snapshot = store.snapshot();
+    const snapshot = store.snapshot(tenant);
     const serialized = JSON.stringify({
       history: snapshot.sessions[0]?.history,
       ticket: snapshot.tickets[0]
@@ -239,7 +351,7 @@ describe("BusinessAgent", () => {
     const apiKey = `sk-${"B".repeat(40)}`;
 
     await send(`Falha ao configurar ${githubToken} e ${apiKey}`, "token-redaction-user");
-    const serialized = JSON.stringify(store.snapshot());
+    const serialized = JSON.stringify(store.snapshot(tenant));
 
     expect(serialized).not.toContain(githubToken);
     expect(serialized).not.toContain(apiKey);
@@ -279,7 +391,7 @@ describe("BusinessAgent", () => {
         reason: "pedido de saída"
       })
     };
-    agent = new BusinessAgent(knowledge, store, llm);
+    agent = new BusinessAgent(tenant, release, store, llm);
 
     const result = await send("Não quero continuar com isso");
     expect(result.state.status).toBe("opted_out");
@@ -309,7 +421,7 @@ describe("BusinessAgent", () => {
         };
       }
     };
-    agent = new BusinessAgent(knowledge, store, llm);
+    agent = new BusinessAgent(tenant, release, store, llm);
 
     await send("xpto alfa");
     await send("xpto beta");
@@ -322,22 +434,24 @@ describe("BusinessAgent", () => {
   });
 
   it("serializa mensagens por contato e não deixa uma resposta antiga reativar a sessão", async () => {
-    let release: ((decision: Awaited<ReturnType<LlmResponder["decide"]>>) => void) | undefined;
+    let releaseDecision:
+      | ((decision: Awaited<ReturnType<LlmResponder["decide"]>>) => void)
+      | undefined;
     let called = false;
     const deferredLlm: LlmResponder = {
       decide: () => {
         called = true;
         return new Promise((resolve) => {
-          release = resolve;
+          releaseDecision = resolve;
         });
       }
     };
-    agent = new BusinessAgent(knowledge, store, deferredLlm);
+    agent = new BusinessAgent(tenant, release, store, deferredLlm);
 
     const oldReply = send("Uma pergunta fora das regras conhecidas");
     await vi.waitFor(() => expect(called).toBe(true));
     const stopReply = send("STOP");
-    release?.({
+    releaseDecision?.({
       intent: "faq",
       reply: "Resposta que ficou aguardando",
       confidence: 0.9,

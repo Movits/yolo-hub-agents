@@ -3,10 +3,85 @@
 Execute primeiro:
 
 ```powershell
-pnpm typecheck
-pnpm test
+pnpm brain:validate
+pnpm brain:publish --agent empresa-modelo --as-of 2026-07-12 --check
+pnpm verify:deploy
 pnpm chat
 ```
+
+O `--check` recompila a brain, executa os golden cases críticos e compara o resultado com a release
+versionada. Uma diferença de conhecimento, manifesto ou checksum deve falhar antes dos testes
+manuais.
+
+## Release fixada e fallback local
+
+Para testar localmente a mesma release usada no Render:
+
+```powershell
+$env:AGENT_ID = "empresa-modelo"
+$env:AGENT_RELEASE_VERSION = "1.0.0"
+$env:AGENT_RELEASE_MANIFEST_SHA256 = "88ac89ba12849303d140fc9a667de1d5d7a21d511253d3a345d953ddc275abd0"
+$env:AGENT_RELEASES_ROOT = "./config/releases"
+pnpm dev
+```
+
+Verifique `/health`: a resposta da demo deve informar `agentId: empresa-modelo` e
+`releaseVersion: 1.0.0`. Trocar um caractere do SHA-256 no ambiente deve impedir a inicialização.
+
+Para voltar ao fallback local depois do teste, encerre o servidor e remova os seletores:
+
+```powershell
+Remove-Item Env:AGENT_ID -ErrorAction SilentlyContinue
+Remove-Item Env:AGENT_RELEASE_VERSION -ErrorAction SilentlyContinue
+Remove-Item Env:AGENT_RELEASE_MANIFEST_SHA256 -ErrorAction SilentlyContinue
+Remove-Item Env:AGENT_RELEASES_ROOT -ErrorAction SilentlyContinue
+```
+
+Sem seletores, `development` e `test` podem usar `COMPANY_CONFIG_PATH`. Faça também um teste negativo
+com `NODE_ENV=production`: sem os três seletores obrigatórios, o processo deve falhar; produção nunca
+pode cair automaticamente para o JSON de desenvolvimento.
+
+## Persistência SQLite
+
+```powershell
+$env:STORAGE_DRIVER = "sqlite"
+$env:SQLITE_PATH = "./data/teste-local.sqlite"
+pnpm dev
+```
+
+Faça opt-out, crie um lead e encerre o processo. Reinicie com o mesmo arquivo e confirme que sessão,
+protocolo e deduplicação permanecem. Os testes automatizados também cobrem reabertura, claim stale,
+TTL, commit atômico e retomada sem protocolo duplicado. Nunca commite arquivos `.sqlite`/`.db`.
+
+## Registro multi-tenant
+
+Copie `config/tenants.example.json` para um local privado, configure `TENANT_REGISTRY_PATH` e forneça
+`SIMULATOR_TENANT_TOKENS` pelo ambiente. Valide que:
+
+1. o mesmo `userId` e `messageId` em dois tenants não compartilham estado;
+2. token do tenant A na rota do tenant B retorna 401;
+3. binding WABA correto com número incorreto é ignorado;
+4. apenas a combinação WABA + número seleciona o agente;
+5. nenhum token aparece no arquivo de registro ou nos logs.
+
+## Assinatura de release
+
+Os testes geram chaves Ed25519 efêmeras e verificam assinatura válida, chave desconhecida, manifesto
+alterado e release sem assinatura. Em homologação, configure `REQUIRE_RELEASE_SIGNATURE=true` e a
+âncora independente `RELEASE_TRUSTED_PUBLIC_KEYS`; remover ou alterar `manifest.sig.json` deve impedir
+o startup.
+
+## Teste de rollback
+
+Quando houver mais de uma versão publicada:
+
+1. execute `pnpm brain:publish --agent <agent-id> --check` antes do deploy;
+2. suba a versão nova e confirme-a no `/health`;
+3. restaure no ambiente a versão anterior e o SHA-256 do manifesto correspondente;
+4. reinicie o processo e confirme a versão anterior no `/health`;
+5. repita preço, opt-out, agenda sem confirmação falsa e handoff.
+
+Rollback seleciona uma release imutável anterior; ele nunca edita ou copia arquivos entre versões.
 
 ## Casos funcionais
 
@@ -42,6 +117,16 @@ Invoke-RestMethod http://127.0.0.1:3000/api/debug/state | ConvertTo-Json -Depth 
 ```
 
 Esse endpoint expõe dados digitados nos testes. Mantenha-o desabilitado fora do ambiente local.
+
+## Smoke test da demo online
+
+O Pages pertence ao repositório separado `Movits/yolo-hub-agents-demo`. Depois do deploy do backend:
+
+1. confirme que o Render está saudável e usando a release fixada;
+2. abra a URL do Pages publicada pelo repositório de deploy;
+3. informe somente o token temporário do simulador;
+4. valide saudação, preço, opt-out/reativação, agenda e handoff;
+5. confirme que a interface não recebe webhooks nem expõe endpoints de debug.
 
 ## Avaliações antes de trocar a base
 

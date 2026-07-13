@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import type { SessionStore } from "../application/ports.js";
 import type {
   AgentResult,
@@ -7,6 +7,7 @@ import type {
   LeadRecord,
   SupportTicket
 } from "../domain/types.js";
+import { tenantScopeKey, type TenantContext } from "../domain/tenant.js";
 
 const IDEMPOTENCY_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
 
@@ -14,12 +15,26 @@ function now(): string {
   return new Date().toISOString();
 }
 
-function shortId(prefix: string): string {
-  return `${prefix}-${randomUUID().replaceAll("-", "").slice(0, 10).toUpperCase()}`;
+function operationId(prefix: string, tenant: TenantContext, sourceMessageId: string): string {
+  const digest = createHash("sha256")
+    .update(tenantScopeKey(tenant, sourceMessageId))
+    .digest("hex")
+    .slice(0, 24)
+    .toUpperCase();
+  return `${prefix}-${digest}`;
 }
 
-function newSession(userId: string): ConversationSession {
+function belongsToTenant(
+  record: { tenantId: string; agentId: string },
+  tenant: TenantContext
+): boolean {
+  return record.tenantId === tenant.tenantId && record.agentId === tenant.agentId;
+}
+
+function newSession(tenant: TenantContext, userId: string): ConversationSession {
   return {
+    tenantId: tenant.tenantId,
+    agentId: tenant.agentId,
     userId,
     status: "active",
     flow: "none",
@@ -31,6 +46,8 @@ function newSession(userId: string): ConversationSession {
 }
 
 export class MemoryStore implements SessionStore {
+  readonly driver = "memory";
+  readonly durability = "ephemeral" as const;
   private readonly sessions = new Map<string, ConversationSession>();
   private readonly processedMessages = new Map<
     string,
@@ -40,33 +57,41 @@ export class MemoryStore implements SessionStore {
   private readonly appointments: AppointmentRequest[] = [];
   private readonly tickets: SupportTicket[] = [];
 
-  getSession(userId: string): ConversationSession {
-    const existing = this.sessions.get(userId);
+  getSession(tenant: TenantContext, userId: string): ConversationSession {
+    const key = tenantScopeKey(tenant, userId);
+    const existing = this.sessions.get(key);
     if (existing) return structuredClone(existing);
 
-    const session = newSession(userId);
-    this.sessions.set(userId, session);
+    const session = newSession(tenant, userId);
+    this.sessions.set(key, session);
     return structuredClone(session);
   }
 
-  saveSession(session: ConversationSession): void {
-    this.sessions.set(session.userId, structuredClone({ ...session, updatedAt: now() }));
+  saveSession(tenant: TenantContext, session: ConversationSession): void {
+    if (!belongsToTenant(session, tenant)) {
+      throw new Error("Sessao pertence a outro tenant ou agente.");
+    }
+    this.sessions.set(
+      tenantScopeKey(tenant, session.userId),
+      structuredClone({ ...session, updatedAt: now() })
+    );
   }
 
-  resetSession(userId: string): ConversationSession {
-    const session = newSession(userId);
-    this.sessions.set(userId, session);
+  resetSession(tenant: TenantContext, userId: string): ConversationSession {
+    const session = newSession(tenant, userId);
+    this.sessions.set(tenantScopeKey(tenant, userId), session);
     return structuredClone(session);
   }
 
-  markMessageProcessed(messageId: string): boolean {
+  markMessageProcessed(tenant: TenantContext, messageId: string): boolean {
     const cutoff = Date.now() - IDEMPOTENCY_TTL_MS;
     for (const [id, entry] of this.processedMessages) {
       if (entry.timestamp < cutoff) this.processedMessages.delete(id);
     }
 
-    if (this.processedMessages.has(messageId)) return false;
-    this.processedMessages.set(messageId, {
+    const key = tenantScopeKey(tenant, messageId);
+    if (this.processedMessages.has(key)) return false;
+    this.processedMessages.set(key, {
       timestamp: Date.now(),
       result: undefined,
       outboundSettled: false
@@ -74,72 +99,106 @@ export class MemoryStore implements SessionStore {
     return true;
   }
 
-  releaseMessage(messageId: string): void {
-    const entry = this.processedMessages.get(messageId);
-    if (entry && !entry.result) this.processedMessages.delete(messageId);
+  releaseMessage(tenant: TenantContext, messageId: string): void {
+    const key = tenantScopeKey(tenant, messageId);
+    const entry = this.processedMessages.get(key);
+    if (entry && !entry.result) this.processedMessages.delete(key);
   }
 
-  saveProcessedResult(messageId: string, result: AgentResult): void {
-    const entry = this.processedMessages.get(messageId);
+  saveProcessedResult(tenant: TenantContext, messageId: string, result: AgentResult): void {
+    const entry = this.processedMessages.get(tenantScopeKey(tenant, messageId));
     if (!entry) return;
     entry.result = structuredClone(result);
   }
 
-  getProcessedResult(messageId: string): AgentResult | undefined {
-    const result = this.processedMessages.get(messageId)?.result;
+  commitResult(
+    tenant: TenantContext,
+    messageId: string,
+    session: ConversationSession,
+    result: AgentResult
+  ): void {
+    this.saveSession(tenant, session);
+    this.saveProcessedResult(tenant, messageId, result);
+  }
+
+  getProcessedResult(tenant: TenantContext, messageId: string): AgentResult | undefined {
+    const result = this.processedMessages.get(tenantScopeKey(tenant, messageId))?.result;
     return result ? structuredClone(result) : undefined;
   }
 
-  markOutboundSettled(messageId: string): void {
-    const entry = this.processedMessages.get(messageId);
+  markOutboundSettled(tenant: TenantContext, messageId: string): void {
+    const entry = this.processedMessages.get(tenantScopeKey(tenant, messageId));
     if (entry) entry.outboundSettled = true;
   }
 
-  isOutboundSettled(messageId: string): boolean {
-    return this.processedMessages.get(messageId)?.outboundSettled ?? false;
+  isOutboundSettled(tenant: TenantContext, messageId: string): boolean {
+    return this.processedMessages.get(tenantScopeKey(tenant, messageId))?.outboundSettled ?? false;
   }
 
-  createLead(input: Omit<LeadRecord, "id" | "createdAt">): LeadRecord {
-    const record: LeadRecord = { ...input, id: shortId("LEAD"), createdAt: now() };
-    this.leads.push(record);
-    return structuredClone(record);
+  createLead(
+    tenant: TenantContext,
+    sourceMessageId: string,
+    input: Omit<LeadRecord, "tenantId" | "agentId" | "id" | "createdAt">
+  ): LeadRecord {
+    const record: LeadRecord = {
+      ...tenant,
+      ...input,
+      id: operationId("LEAD", tenant, sourceMessageId),
+      createdAt: now()
+    };
+    const existing = this.leads.find((lead) => lead.id === record.id);
+    if (!existing) this.leads.push(record);
+    return structuredClone(existing ?? record);
   }
 
   createAppointment(
-    input: Omit<AppointmentRequest, "id" | "createdAt" | "status">
+    tenant: TenantContext,
+    sourceMessageId: string,
+    input: Omit<
+      AppointmentRequest,
+      "tenantId" | "agentId" | "id" | "createdAt" | "status"
+    >
   ): AppointmentRequest {
     const record: AppointmentRequest = {
+      ...tenant,
       ...input,
-      id: shortId("AGENDA"),
+      id: operationId("AGENDA", tenant, sourceMessageId),
       status: "pending_human_confirmation",
       createdAt: now()
     };
-    this.appointments.push(record);
-    return structuredClone(record);
+    const existing = this.appointments.find((appointment) => appointment.id === record.id);
+    if (!existing) this.appointments.push(record);
+    return structuredClone(existing ?? record);
   }
 
-  createTicket(input: Omit<SupportTicket, "id" | "createdAt" | "status">): SupportTicket {
+  createTicket(
+    tenant: TenantContext,
+    sourceMessageId: string,
+    input: Omit<SupportTicket, "tenantId" | "agentId" | "id" | "createdAt" | "status">
+  ): SupportTicket {
     const record: SupportTicket = {
+      ...tenant,
       ...input,
-      id: shortId("ATD"),
+      id: operationId("ATD", tenant, sourceMessageId),
       status: "queued",
       createdAt: now()
     };
-    this.tickets.push(record);
-    return structuredClone(record);
+    const existing = this.tickets.find((ticket) => ticket.id === record.id);
+    if (!existing) this.tickets.push(record);
+    return structuredClone(existing ?? record);
   }
 
-  snapshot(): {
+  snapshot(tenant: TenantContext): {
     sessions: ConversationSession[];
     leads: LeadRecord[];
     appointments: AppointmentRequest[];
     tickets: SupportTicket[];
   } {
     return structuredClone({
-      sessions: [...this.sessions.values()],
-      leads: this.leads,
-      appointments: this.appointments,
-      tickets: this.tickets
+      sessions: [...this.sessions.values()].filter((session) => belongsToTenant(session, tenant)),
+      leads: this.leads.filter((lead) => belongsToTenant(lead, tenant)),
+      appointments: this.appointments.filter((appointment) => belongsToTenant(appointment, tenant)),
+      tickets: this.tickets.filter((ticket) => belongsToTenant(ticket, tenant))
     });
   }
 }

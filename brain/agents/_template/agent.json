@@ -1,5 +1,7 @@
 {
   "schemaVersion": "1.0",
+  "version": "1.0.0",
+  "releaseAsOf": "2026-01-01",
   "id": "agent-id",
   "displayName": "Nome do agente",
   "status": "draft",

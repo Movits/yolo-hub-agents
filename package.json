@@ -14,21 +14,29 @@
     "test:watch": "vitest",
     "chat": "tsx src/cli.ts",
     "brain:validate": "node scripts/validate-brain.mjs",
-    "secrets:check": "node scripts/check-repository-secrets.mjs --history"
+    "brain:publish": "tsx src/brain/publish-cli.ts",
+    "brain:sign": "tsx src/brain/sign-cli.ts",
+    "brain:check-all": "node scripts/check-all-brains.mjs",
+    "releases:check": "node scripts/check-release-immutability.mjs",
+    "public-data:check": "node scripts/check-public-scaffold.mjs",
+    "public-data:check:history": "node scripts/check-public-scaffold.mjs --history",
+    "secrets:check": "node scripts/check-repository-secrets.mjs --history",
+    "secrets:check:tracked": "node scripts/check-repository-secrets.mjs",
+    "verify:deploy": "pnpm secrets:check:tracked && pnpm public-data:check && pnpm brain:check-all && pnpm releases:check && pnpm typecheck && pnpm test && pnpm build"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=24.14 <25"
   },
   "dependencies": {
-    "dotenv": "latest",
-    "fastify": "latest",
-    "openai": "latest",
-    "zod": "latest"
+    "dotenv": "^17.4.2",
+    "fastify": "^5.10.0",
+    "openai": "^6.46.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/node": "latest",
-    "tsx": "latest",
-    "typescript": "latest",
-    "vitest": "latest"
+    "@types/node": "^24.10.0",
+    "tsx": "^4.23.0",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
   }
 }

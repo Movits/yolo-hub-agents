@@ -1,0 +1,144 @@
+{
+  "agentId": "empresa-modelo",
+  "asOf": "2026-07-12",
+  "compilerVersion": "1.0",
+  "composition": [
+    {
+      "id": "shared",
+      "layer": "shared"
+    },
+    {
+      "id": "empresa-modelo",
+      "layer": "agent"
+    }
+  ],
+  "evals": {
+    "critical": 12,
+    "failed": 0,
+    "files": [
+      "agents/empresa-modelo/evals/golden-cases.md"
+    ],
+    "passed": 12,
+    "suiteSha256": "2e8b5c9254555089731f02a6fee75367415358b04df4f638b8d9cc02df8c86d6"
+  },
+  "inputs": [
+    {
+      "id": "empresa-modelo.company.profile",
+      "origin": "config/company.example.json",
+      "path": "agents/empresa-modelo/knowledge/company.md",
+      "sensitivity": "public-business",
+      "sha256": "0011df1dc71a2229266957e328a58a6faae4bb797810e0cf78a52122a191382c",
+      "type": "company",
+      "version": "1.0.0"
+    },
+    {
+      "id": "empresa-modelo.faq.core",
+      "origin": "config/company.example.json",
+      "path": "agents/empresa-modelo/knowledge/faq.md",
+      "sensitivity": "public-business",
+      "sha256": "9b29525c6521ea05b4018d6f92d65caa6d5c3955f498dcfde632dd32be5beea7",
+      "type": "faq",
+      "version": "1.0.0"
+    },
+    {
+      "id": "empresa-modelo.policies.commercial",
+      "origin": "config/company.example.json",
+      "path": "agents/empresa-modelo/knowledge/policies.md",
+      "sensitivity": "public-business",
+      "sha256": "a01cf6ae8ae62d850c6b932297282951557029ee47d2f01ec9417320163ed6ff",
+      "type": "policy",
+      "version": "1.0.0"
+    },
+    {
+      "id": "empresa-modelo.services.catalog",
+      "origin": "config/company.example.json",
+      "path": "agents/empresa-modelo/knowledge/services.md",
+      "sensitivity": "public-business",
+      "sha256": "bd3dad9de79ea15d967f932052a31ad1846df5703571727488bec09ad7dedd15",
+      "type": "services",
+      "version": "1.0.0"
+    },
+    {
+      "id": "empresa-modelo.support.system-not-opening",
+      "origin": "config/company.example.json",
+      "path": "agents/empresa-modelo/knowledge/support.md",
+      "sensitivity": "public-business",
+      "sha256": "4d864005dd73d82171abee1de05f2b43fc4e0f374187b91cdd48698afb51021e",
+      "type": "support",
+      "version": "1.0.0"
+    },
+    {
+      "id": "empresa-modelo.voice.identity",
+      "origin": "config/company.example.json",
+      "path": "agents/empresa-modelo/knowledge/voice.md",
+      "sensitivity": "public-business",
+      "sha256": "21b27346f19e9ee2b4ac6be210447590d5175896cf5719016cac6fb61b9e9494",
+      "type": "policy",
+      "version": "1.0.0"
+    }
+  ],
+  "output": {
+    "file": "business-knowledge.json",
+    "sha256": "82eec3374748afc18148053a94dffca2c62750ffb25f8da788e9f6a5819db031"
+  },
+  "policyInputs": [
+    {
+      "id": "shared.glossary.core",
+      "origin": "internal-architecture",
+      "path": "shared/glossary.md",
+      "sensitivity": "internal",
+      "sha256": "3afb4dfbf23e71f5b9076c8a0acf5eae2c2dfe029eced511ac2e341e20c438ff",
+      "type": "glossary",
+      "version": "1.0.0"
+    },
+    {
+      "id": "shared.policy.safety-and-handoff",
+      "origin": "internal-governance",
+      "path": "shared/policies/safety-and-handoff.md",
+      "sensitivity": "internal",
+      "sha256": "f0ca99f0ed1ed2e0b9f24e6d14806ff0447c7a05ab03ddcc52c5ed9af1aa5960",
+      "type": "policy",
+      "version": "1.0.0"
+    },
+    {
+      "id": "empresa-modelo.workflow.human-handoff",
+      "origin": "src/application/agent.ts",
+      "path": "agents/empresa-modelo/workflows/human-handoff.md",
+      "sensitivity": "internal",
+      "sha256": "3faa11cfe371a845322caf06fd92550d99ea1f568dafcb7512f5972fe232829c",
+      "type": "workflow",
+      "version": "1.0.0"
+    },
+    {
+      "id": "empresa-modelo.workflow.lead",
+      "origin": "src/application/agent.ts",
+      "path": "agents/empresa-modelo/workflows/lead.md",
+      "sensitivity": "internal",
+      "sha256": "16cfaaeaa39146d61928c11dbce82b7bf03733c2b3de3ea8bd46bb7e178ab8f9",
+      "type": "workflow",
+      "version": "1.0.0"
+    },
+    {
+      "id": "empresa-modelo.workflow.opt-out",
+      "origin": "src/application/agent.ts",
+      "path": "agents/empresa-modelo/workflows/opt-out.md",
+      "sensitivity": "internal",
+      "sha256": "02edab1492959796938e961f37447d240ef31762ab4a45be30122403eb6806eb",
+      "type": "workflow",
+      "version": "1.0.0"
+    },
+    {
+      "id": "empresa-modelo.workflow.scheduling",
+      "origin": "src/application/agent.ts",
+      "path": "agents/empresa-modelo/workflows/scheduling.md",
+      "sensitivity": "internal",
+      "sha256": "e6cae02de4231b15e7ed3f88322c97f1c51681b055a16f5db5de39f015a63042",
+      "type": "workflow",
+      "version": "1.0.0"
+    }
+  ],
+  "publicationId": "sha256:31ca545b9d47c88815271a5327da9ab8d085b4d69f833115d10d8786020f8e37",
+  "publishedAt": "2026-07-12T00:00:00.000Z",
+  "schemaVersion": "1.0",
+  "version": "1.0.0"
+}

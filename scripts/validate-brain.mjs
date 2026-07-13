@@ -44,7 +44,7 @@ const secretPatterns = [
   /github_pat_[A-Za-z0-9_]{20,}/,
   /AKIA[0-9A-Z]{16}/,
   /AIza[0-9A-Za-z_-]{35}/,
-  /AC[a-f0-9]{32}/i,
+  /\bAC[a-f0-9]{32}\b/i,
   /xox[baprs]-[A-Za-z0-9-]{20,}/,
   /SG\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/,
   /eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/,
@@ -339,14 +339,6 @@ for (const filePath of markdownFiles) {
   ) {
     errors.push(`${vaultPath}: expires_at não pode ser anterior a effective_from`);
   }
-  if (
-    metadata.status === "approved" &&
-    metadata.expires_at !== "null" &&
-    isIsoDate(metadata.expires_at) &&
-    metadata.expires_at < new Date().toISOString().slice(0, 10)
-  ) {
-    errors.push(`${vaultPath}: nota aprovada está expirada`);
-  }
   if (metadata.status === "approved" && /\[TODO\]|\b(?:TBD|PREENCHER)\b|\{\{[^}]+\}\}/i.test(contents)) {
     errors.push(`${vaultPath}: nota aprovada contém placeholder`);
   }
@@ -408,6 +400,12 @@ if (existsSync(agentsRoot)) {
     if (manifest.schemaVersion !== "1.0") {
       errors.push(`agents/${entry.name}: schemaVersion deve ser 1.0`);
     }
+    if (typeof manifest.version !== "string" || !/^\d+\.\d+\.\d+$/.test(manifest.version)) {
+      errors.push(`agents/${entry.name}: version do manifesto deve usar semver`);
+    }
+    if (typeof manifest.releaseAsOf !== "string" || !isIsoDate(manifest.releaseAsOf)) {
+      errors.push(`agents/${entry.name}: releaseAsOf deve usar YYYY-MM-DD`);
+    }
     const expectedManifestId = templateManifest ? "agent-id" : entry.name;
     if (manifest.id !== expectedManifestId) {
       errors.push(`agents/${entry.name}: id do manifesto não corresponde ao esperado`);
@@ -436,6 +434,34 @@ if (existsSync(agentsRoot)) {
           lstatSync(segmentPath).isSymbolicLink()
         ) {
           errors.push(`agents/${entry.name}: segmento herdado não encontrado: ${parent}`);
+          continue;
+        }
+        const segmentManifestPath = resolve(segmentPath, "segment.json");
+        if (
+          !existsSync(segmentManifestPath) ||
+          !lstatSync(segmentManifestPath).isFile() ||
+          lstatSync(segmentManifestPath).isSymbolicLink()
+        ) {
+          errors.push(`agents/${entry.name}: segmento sem segment.json válido: ${parent}`);
+          continue;
+        }
+        try {
+          const segmentManifest = JSON.parse(readFileSync(segmentManifestPath, "utf8"));
+          if (
+            !isPlainObject(segmentManifest) ||
+            segmentManifest.schemaVersion !== "1.0" ||
+            segmentManifest.id !== parent ||
+            typeof segmentManifest.version !== "string" ||
+            !/^\d+\.\d+\.\d+$/.test(segmentManifest.version) ||
+            !["prototype", "active"].includes(segmentManifest.status) ||
+            !Array.isArray(segmentManifest.knowledgeRoots) ||
+            segmentManifest.knowledgeRoots.length === 0 ||
+            segmentManifest.knowledgeRoots.some((root) => !isSlug(root))
+          ) {
+            errors.push(`agents/${entry.name}: segment.json inválido: ${parent}`);
+          }
+        } catch (error) {
+          errors.push(`agents/${entry.name}: segment.json inválido: ${parent}: ${error.message}`);
         }
       }
     }

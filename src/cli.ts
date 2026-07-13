@@ -15,7 +15,7 @@ while (true) {
   if (!value) continue;
   if (value === "/exit") break;
   if (value === "/estado") {
-    output.write(`${JSON.stringify(runtime.store.snapshot(), null, 2)}\n\n`);
+    output.write(`${JSON.stringify(runtime.store.snapshot(runtime.tenantContext), null, 2)}\n\n`);
     continue;
   }
 

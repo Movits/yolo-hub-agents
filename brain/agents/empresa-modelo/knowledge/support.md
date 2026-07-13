@@ -20,3 +20,22 @@ Procedimento aprovado:
 3. Se não resolver, criar handoff; não inventar novas etapas técnicas.
 
 Nunca pedir senha, código de autenticação ou dados de cartão.
+
+## Dados executáveis
+
+```json brain-runtime
+{
+  "schemaVersion": "1.0",
+  "kind": "supportProcedures",
+  "value": [
+    {
+      "id": "system_not_opening",
+      "triggers": ["sistema nao abre", "nao consigo entrar", "pagina nao carrega", "aplicativo nao abre"],
+      "steps": [
+        "Confirme se a internet está funcionando abrindo outro site ou aplicativo.",
+        "Feche o sistema por completo, abra novamente e tente entrar mais uma vez."
+      ]
+    }
+  ]
+}
+```

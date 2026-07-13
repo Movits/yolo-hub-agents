@@ -65,6 +65,8 @@ function isSensitivePath(path) {
     /(^|\/)(?:\.aws|\.kube|secrets?|\.secrets)(\/|$)/.test(normalized) ||
     /(?:^|\/)(?:credentials|service-account)[^/]*\.json$/.test(normalized) ||
     /\.(?:pem|key|p12|pfx|jks|keystore|tfvars|tfvars\.json)$/.test(normalized) ||
+    /\.(?:sqlite|sqlite3|db)$/.test(normalized) ||
+    /^(?:brain-private|data)\//.test(normalized) ||
     normalized === "config/company.json" ||
     /^config\/.*\.local\.json$/.test(normalized)
   );

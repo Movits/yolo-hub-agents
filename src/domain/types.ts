@@ -55,6 +55,8 @@ export interface ConversationMessage {
 }
 
 export interface ConversationSession {
+  tenantId: string;
+  agentId: string;
   userId: string;
   status: SessionStatus;
   flow: FlowStep;
@@ -66,6 +68,8 @@ export interface ConversationSession {
 }
 
 export interface AgentResult {
+  agentId: string;
+  releaseVersion: string;
   reply: string | null;
   intent: Intent;
   source: ReplySource;
@@ -149,6 +153,8 @@ export interface LlmDecision {
 }
 
 export interface LeadRecord {
+  tenantId: string;
+  agentId: string;
   id: string;
   userId: string;
   name: string;
@@ -160,6 +166,8 @@ export interface LeadRecord {
 }
 
 export interface AppointmentRequest {
+  tenantId: string;
+  agentId: string;
   id: string;
   userId: string;
   service: string;
@@ -170,6 +178,8 @@ export interface AppointmentRequest {
 }
 
 export interface SupportTicket {
+  tenantId: string;
+  agentId: string;
   id: string;
   userId: string;
   category: "support" | "sales" | "complaint" | "general";

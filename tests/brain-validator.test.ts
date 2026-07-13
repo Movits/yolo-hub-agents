@@ -30,6 +30,8 @@ Resposta aprovada.
 function manifest(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     schemaVersion: "1.0",
+    version: "1.0.0",
+    releaseAsOf: "2026-07-12",
     id: "test-agent",
     displayName: "Test Agent",
     status: "active",
@@ -107,6 +109,13 @@ describe("brain validator", () => {
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("extends deve incluir shared");
+  });
+
+  it("recusa manifesto sem versão semântica", () => {
+    const result = validate(createProject({ manifestValue: manifest({ version: "latest" }) }));
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("version do manifesto deve usar semver");
   });
 
   it("recusa source que sai da raiz declarada", () => {
