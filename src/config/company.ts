@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { z } from "zod";
 import type { BusinessKnowledge } from "../domain/types.js";
 
-const companySchema = z.object({
+export const businessKnowledgeSchema = z.object({
   agentId: z.string().regex(/^[a-z0-9][a-z0-9-]*$/),
   prototype: z.boolean(),
   notice: z.string().min(1),
@@ -11,7 +11,7 @@ const companySchema = z.object({
     name: z.string().min(1),
     tone: z.string().min(1),
     humanResponseSla: z.string().min(1)
-  }),
+  }).strict(),
   company: z.object({
     name: z.string().min(1),
     industry: z.string().min(1),
@@ -23,42 +23,46 @@ const companySchema = z.object({
     humanPhone: z.string().min(1),
     remoteService: z.string().min(1),
     invoice: z.string().min(1)
-  }),
+  }).strict(),
   services: z.array(
     z.object({
       id: z.string().min(1),
       name: z.string().min(1),
       description: z.string().min(1),
       price: z.string().min(1)
-    })
+    }).strict()
   ).min(1),
   policies: z.object({
     paymentMethods: z.string().min(1),
     cancellation: z.string().min(1),
     supportResponseTime: z.string().min(1),
     privacyContact: z.string().min(1)
-  }),
+  }).strict(),
   faqs: z.array(
     z.object({
       id: z.string().min(1),
       questions: z.array(z.string().min(1)).min(1),
       answer: z.string().min(1)
-    })
+    }).strict()
   ),
   supportProcedures: z.array(
     z.object({
       id: z.string().min(1),
       triggers: z.array(z.string().min(1)).min(1),
       steps: z.array(z.string().min(1)).min(1)
-    })
+    }).strict()
   )
-});
+}).strict();
+
+export function parseBusinessKnowledge(value: unknown): BusinessKnowledge {
+  return businessKnowledgeSchema.parse(value);
+}
 
 export function loadCompanyConfig(path: string): BusinessKnowledge {
   const absolutePath = resolve(path);
   const raw = readFileSync(absolutePath, "utf8");
   const parsed: unknown = JSON.parse(raw);
-  return companySchema.parse(parsed);
+  return parseBusinessKnowledge(parsed);
 }
 
 export function renderTemplate(template: string, knowledge: BusinessKnowledge): string {

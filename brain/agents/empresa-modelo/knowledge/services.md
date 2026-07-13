@@ -30,3 +30,32 @@ source: config/company.example.json
 
 Não confirmar descontos, condições especiais ou itens fora desta nota. Quando a pergunta exigir uma
 proposta personalizada, seguir [[agents/empresa-modelo/workflows/lead]].
+
+## Dados executáveis
+
+```json brain-runtime
+{
+  "schemaVersion": "1.0",
+  "kind": "services",
+  "value": [
+    {
+      "id": "essencial",
+      "name": "Plano Essencial",
+      "description": "Organização inicial do atendimento e dos processos.",
+      "price": "R$ 199/mês"
+    },
+    {
+      "id": "profissional",
+      "name": "Plano Profissional",
+      "description": "Automação e acompanhamento para equipes em crescimento.",
+      "price": "R$ 499/mês"
+    },
+    {
+      "id": "personalizado",
+      "name": "Plano Personalizado",
+      "description": "Escopo desenhado de acordo com a operação da empresa.",
+      "price": "sob consulta"
+    }
+  ]
+}
+```

@@ -45,7 +45,13 @@ draft -> in-review -> approved -> retired
 Somente notas `approved` cuja `sensitivity` esteja autorizada em `publishSensitivity` podem entrar no
 índice público do agente. Fluxos e avaliações internas continuam disponíveis para orquestração e
 testes, mas não para recuperação em respostas. Alterar conhecimento não altera o runtime
-automaticamente; a futura etapa de publicação gerará uma versão imutável e testada.
+automaticamente. `pnpm brain:publish --agent <agent-id> --as-of <YYYY-MM-DD>` compila blocos
+`brain-runtime`, executa os blocos `brain-eval` críticos e gera uma release imutável em
+`config/releases/<agent-id>/<version>/`. Wikilinks continuam servindo apenas para navegação.
+
+Cada fato executável fica em um bloco JSON explícito. O publicador não interpreta a prosa Markdown,
+não segue links e não lê `source` como dependência. O `runtimeConfig` é usado apenas como oracle de
+migração: enquanto essa ponte existir, a compilação falha se o JSON gerado divergir dela.
 
 Uma nota aprovada pode ter vigência futura para representar uma publicação agendada. O publicador
 deverá excluí-la até `effective_from` e excluir qualquer nota após `expires_at`. O `runtimeConfig` do

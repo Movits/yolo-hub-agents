@@ -1,0 +1,88 @@
+{
+  "agentId": "empresa-modelo",
+  "asOf": "2026-07-12",
+  "compilerVersion": "1.0",
+  "composition": [
+    {
+      "id": "shared",
+      "layer": "shared"
+    },
+    {
+      "id": "empresa-modelo",
+      "layer": "agent"
+    }
+  ],
+  "evals": {
+    "critical": 11,
+    "failed": 0,
+    "files": [
+      "agents/empresa-modelo/evals/golden-cases.md"
+    ],
+    "passed": 11,
+    "suiteSha256": "16abb484a20a7d045307ae1c554e2a0ea216abc8b36c0bdee90e101d396dbaaf"
+  },
+  "inputs": [
+    {
+      "id": "empresa-modelo.company.profile",
+      "origin": "config/company.example.json",
+      "path": "agents/empresa-modelo/knowledge/company.md",
+      "sensitivity": "public-business",
+      "sha256": "0011df1dc71a2229266957e328a58a6faae4bb797810e0cf78a52122a191382c",
+      "type": "company",
+      "version": "1.0.0"
+    },
+    {
+      "id": "empresa-modelo.faq.core",
+      "origin": "config/company.example.json",
+      "path": "agents/empresa-modelo/knowledge/faq.md",
+      "sensitivity": "public-business",
+      "sha256": "9b29525c6521ea05b4018d6f92d65caa6d5c3955f498dcfde632dd32be5beea7",
+      "type": "faq",
+      "version": "1.0.0"
+    },
+    {
+      "id": "empresa-modelo.policies.commercial",
+      "origin": "config/company.example.json",
+      "path": "agents/empresa-modelo/knowledge/policies.md",
+      "sensitivity": "public-business",
+      "sha256": "a01cf6ae8ae62d850c6b932297282951557029ee47d2f01ec9417320163ed6ff",
+      "type": "policy",
+      "version": "1.0.0"
+    },
+    {
+      "id": "empresa-modelo.services.catalog",
+      "origin": "config/company.example.json",
+      "path": "agents/empresa-modelo/knowledge/services.md",
+      "sensitivity": "public-business",
+      "sha256": "bd3dad9de79ea15d967f932052a31ad1846df5703571727488bec09ad7dedd15",
+      "type": "services",
+      "version": "1.0.0"
+    },
+    {
+      "id": "empresa-modelo.support.system-not-opening",
+      "origin": "config/company.example.json",
+      "path": "agents/empresa-modelo/knowledge/support.md",
+      "sensitivity": "public-business",
+      "sha256": "4d864005dd73d82171abee1de05f2b43fc4e0f374187b91cdd48698afb51021e",
+      "type": "support",
+      "version": "1.0.0"
+    },
+    {
+      "id": "empresa-modelo.voice.identity",
+      "origin": "config/company.example.json",
+      "path": "agents/empresa-modelo/knowledge/voice.md",
+      "sensitivity": "public-business",
+      "sha256": "21b27346f19e9ee2b4ac6be210447590d5175896cf5719016cac6fb61b9e9494",
+      "type": "policy",
+      "version": "1.0.0"
+    }
+  ],
+  "output": {
+    "file": "business-knowledge.json",
+    "sha256": "82eec3374748afc18148053a94dffca2c62750ffb25f8da788e9f6a5819db031"
+  },
+  "publicationId": "sha256:17628b3f7f574689802eeba999a4641bce51e779ffadf16e26504c03039c34e3",
+  "publishedAt": "2026-07-12T00:00:00.000Z",
+  "schemaVersion": "1.0",
+  "version": "1.0.0"
+}

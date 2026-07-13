@@ -1,0 +1,156 @@
+{
+  "agentId": "empresa-modelo",
+  "assistant": {
+    "humanResponseSla": "até 1 dia útil",
+    "name": "Lia",
+    "tone": "cordial, profissional, simples e objetivo"
+  },
+  "company": {
+    "address": "Avenida Exemplo, 100, São Paulo - SP",
+    "businessHours": "segunda a sexta, das 9h às 18h",
+    "description": "Ajudamos pequenas empresas a organizar atendimento, vendas e processos digitais.",
+    "email": "contato@empresa-modelo.example",
+    "humanPhone": "(11) 0000-0000",
+    "industry": "consultoria e soluções digitais para pequenas empresas",
+    "invoice": "Emitimos nota fiscal para todos os serviços contratados.",
+    "name": "Empresa Modelo",
+    "remoteService": "Atendemos todo o Brasil remotamente.",
+    "timezone": "America/Sao_Paulo"
+  },
+  "faqs": [
+    {
+      "answer": "A {company.name} atua com {company.industry}. {company.description}",
+      "id": "company_description",
+      "questions": [
+        "o que a empresa faz",
+        "com o que voces trabalham",
+        "quem sao voces"
+      ]
+    },
+    {
+      "answer": "Nosso horário de atendimento é {company.businessHours}, no fuso {company.timezone}.",
+      "id": "business_hours",
+      "questions": [
+        "qual o horario de atendimento",
+        "que horas voces abrem",
+        "voces atendem hoje"
+      ]
+    },
+    {
+      "answer": "Nosso endereço de exemplo é {company.address}. {company.remoteService}",
+      "id": "address",
+      "questions": [
+        "onde voces ficam",
+        "qual o endereco",
+        "onde fica a empresa"
+      ]
+    },
+    {
+      "answer": "{policies.paymentMethods}",
+      "id": "payment",
+      "questions": [
+        "quais formas de pagamento",
+        "aceita pix",
+        "posso pagar no boleto"
+      ]
+    },
+    {
+      "answer": "{policies.cancellation}",
+      "id": "cancellation",
+      "questions": [
+        "como cancelar",
+        "qual a politica de cancelamento",
+        "quero cancelar meu plano",
+        "quero sair do meu plano"
+      ]
+    },
+    {
+      "answer": "{policies.supportResponseTime}",
+      "id": "support_sla",
+      "questions": [
+        "qual o prazo do suporte",
+        "quanto demora o suporte",
+        "quando vao me responder"
+      ]
+    },
+    {
+      "answer": "{company.remoteService}",
+      "id": "remote",
+      "questions": [
+        "atendem remoto",
+        "atendem todo brasil",
+        "o atendimento e online"
+      ]
+    },
+    {
+      "answer": "{company.invoice}",
+      "id": "invoice",
+      "questions": [
+        "emite nota fiscal",
+        "tem nota fiscal",
+        "vocês fornecem nf"
+      ]
+    },
+    {
+      "answer": "Nosso e-mail de contato é {company.email}.",
+      "id": "contact_email",
+      "questions": [
+        "qual o email de contato",
+        "qual o email",
+        "como falar por email"
+      ]
+    },
+    {
+      "answer": "O telefone de contato configurado é {company.humanPhone}.",
+      "id": "human_phone",
+      "questions": [
+        "qual o telefone de contato",
+        "qual o telefone",
+        "numero para contato"
+      ]
+    }
+  ],
+  "notice": "DADOS TOTALMENTE FICTÍCIOS PARA TESTES. Substitua este arquivo antes de produção.",
+  "policies": {
+    "cancellation": "O cancelamento deve ser solicitado com 7 dias de antecedência.",
+    "paymentMethods": "Aceitamos Pix, cartão ou boleto.",
+    "privacyContact": "Solicitações sobre dados pessoais são encaminhadas à equipe responsável.",
+    "supportResponseTime": "O prazo de primeira resposta do suporte é de até 1 dia útil."
+  },
+  "prototype": true,
+  "services": [
+    {
+      "description": "Organização inicial do atendimento e dos processos.",
+      "id": "essencial",
+      "name": "Plano Essencial",
+      "price": "R$ 199/mês"
+    },
+    {
+      "description": "Automação e acompanhamento para equipes em crescimento.",
+      "id": "profissional",
+      "name": "Plano Profissional",
+      "price": "R$ 499/mês"
+    },
+    {
+      "description": "Escopo desenhado de acordo com a operação da empresa.",
+      "id": "personalizado",
+      "name": "Plano Personalizado",
+      "price": "sob consulta"
+    }
+  ],
+  "supportProcedures": [
+    {
+      "id": "system_not_opening",
+      "steps": [
+        "Confirme se a internet está funcionando abrindo outro site ou aplicativo.",
+        "Feche o sistema por completo, abra novamente e tente entrar mais uma vez."
+      ],
+      "triggers": [
+        "sistema nao abre",
+        "nao consigo entrar",
+        "pagina nao carrega",
+        "aplicativo nao abre"
+      ]
+    }
+  ]
+}

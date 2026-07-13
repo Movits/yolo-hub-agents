@@ -408,6 +408,9 @@ if (existsSync(agentsRoot)) {
     if (manifest.schemaVersion !== "1.0") {
       errors.push(`agents/${entry.name}: schemaVersion deve ser 1.0`);
     }
+    if (typeof manifest.version !== "string" || !/^\d+\.\d+\.\d+$/.test(manifest.version)) {
+      errors.push(`agents/${entry.name}: version do manifesto deve usar semver`);
+    }
     const expectedManifestId = templateManifest ? "agent-id" : entry.name;
     if (manifest.id !== expectedManifestId) {
       errors.push(`agents/${entry.name}: id do manifesto não corresponde ao esperado`);

@@ -60,12 +60,23 @@ Abra `brain/` como vault no Obsidian e comece por `brain/HOME.md`. Antes de publ
 
 ```powershell
 pnpm brain:validate
+pnpm brain:publish --agent empresa-modelo --as-of 2026-07-12 --check
 ```
 
 O validador verifica frontmatter, IDs duplicados, estados editoriais, links Obsidian, manifests e
-padrões óbvios de segredos. Por enquanto a brain é uma camada editorial: o runtime continua usando
-`config/company.example.json`. A futura etapa de ingestão usará somente notas `approved`, com índice
-versionado e rollback.
+padrões óbvios de segredos. O publicador compila somente notas `approved`, vigentes e com
+sensibilidade autorizada em uma release JSON imutável, executa avaliações críticas e registra hashes.
+O runtime ainda usa `config/company.example.json`; a etapa seguinte passará a exigir uma release
+explicitamente selecionada.
+
+Para publicar a amostra fictícia:
+
+```powershell
+pnpm brain:publish --agent empresa-modelo --as-of 2026-07-12
+```
+
+O comando não segue links Obsidian como dependências e recusa sobrescrever uma versão com bytes
+diferentes. Incremente `version` no `agent.json` para uma nova publicação.
 
 ## Segurança do repositório público
 
