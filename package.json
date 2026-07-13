@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "chat": "tsx src/cli.ts",
-    "brain:validate": "node scripts/validate-brain.mjs"
+    "brain:validate": "node scripts/validate-brain.mjs",
+    "secrets:check": "node scripts/check-repository-secrets.mjs --history"
   },
   "engines": {
     "node": ">=22"

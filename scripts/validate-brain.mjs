@@ -33,9 +33,7 @@ const allowedStatuses = new Set(["draft", "in-review", "approved", "retired"]);
 const allowedSensitivity = new Set([
   "public",
   "public-business",
-  "internal",
-  "confidential",
-  "restricted"
+  "internal"
 ]);
 
 const secretPatterns = [
@@ -43,6 +41,7 @@ const secretPatterns = [
   /sk_(?:live|test)_[A-Za-z0-9]{20,}/,
   /EAA[A-Za-z0-9]{30,}/,
   /gh[pousr]_[A-Za-z0-9]{20,}/,
+  /github_pat_[A-Za-z0-9_]{20,}/,
   /AKIA[0-9A-Z]{16}/,
   /AIza[0-9A-Za-z_-]{35}/,
   /AC[a-f0-9]{32}/i,

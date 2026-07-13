@@ -66,6 +66,9 @@ export function cleanUserValue(value: string, maxLength = 500): string {
 
 export function redactSecrets(value: string): string {
   return value
+    .replace(/\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, "[TOKEN DO GITHUB REDIGIDO]")
+    .replace(/\bgh[pousr]_[A-Za-z0-9]{20,}\b/g, "[TOKEN DO GITHUB REDIGIDO]")
+    .replace(/\bsk-[A-Za-z0-9_-]{20,}\b/g, "[CHAVE DE API REDIGIDA]")
     .replace(/\b(?:\d[ .-]?){13,19}\b/g, "[DADO DE CARTÃO REDIGIDO]")
     .replace(
       /\b(senha(?: atual)?|password|token(?: de acesso)?|cvv|otp|c[oó]digo(?: de autentica[cç][aã]o| por sms)?)\b(?:\s*(?:[:=#]|é|e|is)\s*|\s+)([^,;\r\n]+)/gi,

@@ -29,10 +29,12 @@ pelas raízes e pelo manifesto; ela nunca seguirá links como dependências de i
 
 Arquivos `.obsidian/` e `.trash/` são locais e não entram no Git.
 
-O `CODEOWNERS` registra responsabilidade e a CI valida cada push/PR. Como o plano atual do repositório
-privado não impõe branch protection, a segunda aprovação ainda é um procedimento manual. Antes de
-conteúdo real de clientes, habilite ruleset/PR obrigatório em plano compatível ou mova a brain para um
-repositório privado dedicado com essa proteção.
+Este repositório é público. Os rótulos de `sensitivity` controlam a futura publicação no agente, não o
+acesso pelo GitHub: qualquer arquivo commitado aqui fica visível para todos. Por isso este vault aceita
+somente exemplos fictícios e arquitetura reutilizável. Antes de conteúdo real de clientes, mova a brain
+operacional para um repositório privado dedicado, com PR obrigatório, segunda aprovação e controle de
+acesso. O validador rejeita notas `confidential` e `restricted` neste scaffold. O `CODEOWNERS`
+registra responsabilidade e a CI valida cada push/PR.
 
 ## Ciclo editorial
 
@@ -55,8 +57,8 @@ o mesmo `agentId` e passar pelo schema empresarial; não é uma instrução para
 - Permitido: informações institucionais aprovadas, serviços, FAQs, políticas e procedimentos.
 - Proibido: chaves, senhas, tokens, conversas, leads, telefones reais de clientes, prontuários e
   documentos pessoais.
-- Este workspace está sincronizado pelo OneDrive. Considere tudo que entra nele replicado em nuvem;
-  use apenas conteúdo fictício até existir uma política formal de acesso, retenção e backup.
+- Considere qualquer workspace sincronizado como replicado em nuvem; use apenas conteúdo fictício
+  neste scaffold público.
 - Conteúdo de clínica deve limitar-se a informações institucionais e fluxos aprovados. Dados de saúde
   nunca entram neste vault.
 - Toda nota precisa declarar responsável, sensibilidade, versão, vigência e origem.

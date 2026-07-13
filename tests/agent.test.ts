@@ -71,7 +71,7 @@ describe("BusinessAgent", () => {
     const email = await send("Qual o e-mail?", "email-user");
     const phone = await send("Qual o telefone?", "phone-user");
 
-    expect(email.reply).toContain("contato@empresa-modelo.exemplo");
+    expect(email.reply).toContain("contato@empresa-modelo.example");
     expect(phone.reply).toContain("(11) 0000-0000");
   });
 
@@ -231,6 +231,18 @@ describe("BusinessAgent", () => {
     expect(serialized).not.toContain("abc.def.ghi");
     expect(serialized).not.toContain("987654");
     expect(serialized).not.toContain("4111.1111.1111.1111");
+    expect(serialized).toContain("REDIGIDO");
+  });
+
+  it("redige tokens reconhecíveis mesmo sem rótulo antes de persistir", async () => {
+    const githubToken = `github_pat_${"A".repeat(70)}`;
+    const apiKey = `sk-${"B".repeat(40)}`;
+
+    await send(`Falha ao configurar ${githubToken} e ${apiKey}`, "token-redaction-user");
+    const serialized = JSON.stringify(store.snapshot());
+
+    expect(serialized).not.toContain(githubToken);
+    expect(serialized).not.toContain(apiKey);
     expect(serialized).toContain("REDIGIDO");
   });
 

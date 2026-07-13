@@ -67,6 +67,22 @@ padrões óbvios de segredos. Por enquanto a brain é uma camada editorial: o ru
 `config/company.example.json`. A futura etapa de ingestão usará somente notas `approved`, com índice
 versionado e rollback.
 
+## Segurança do repositório público
+
+Este repositório contém apenas código e dados fictícios de demonstração. Nunca commite conversas,
+leads, dados pessoais, credenciais ou conhecimento real de clientes. Copie `.env.example` para `.env`
+e mantenha todas as chaves somente no ambiente local ou no gerenciador de segredos do provedor.
+
+Antes de cada push, execute:
+
+```powershell
+pnpm secrets:check
+```
+
+O comando verifica arquivos rastreados e o histórico Git por formatos conhecidos de credenciais. Ele
+é uma proteção complementar: qualquer segredo exposto deve ser revogado imediatamente, mesmo que o
+arquivo seja removido depois. Veja também [SECURITY.md](SECURITY.md).
+
 ## Início rápido
 
 Pré-requisito: Node.js 22 ou mais recente e pnpm.

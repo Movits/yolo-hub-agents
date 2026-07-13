@@ -22,7 +22,7 @@ atendimento, vendas e processos digitais.
 - Fuso: `America/Sao_Paulo`.
 - Endereço fictício: Avenida Exemplo, 100, São Paulo - SP.
 - Atendimento remoto: todo o Brasil.
-- E-mail fictício: `contato@empresa-modelo.exemplo`.
+- E-mail fictício: `contato@empresa-modelo.example`.
 - Telefone fictício: `(11) 0000-0000`.
 - Emite nota fiscal para todos os serviços contratados.
 

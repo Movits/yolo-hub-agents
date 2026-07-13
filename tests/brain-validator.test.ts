@@ -174,4 +174,15 @@ describe("brain validator", () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("link Markdown não resolvido");
   });
+
+  it("recusa conteúdo confidencial no scaffold público", () => {
+    const noteContents = frontmatter().replace(
+      "sensitivity: public-business",
+      "sensitivity: confidential"
+    );
+    const result = validate(createProject({ noteContents }));
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("sensitivity inválida: confidential");
+  });
 });
